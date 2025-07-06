@@ -15,8 +15,8 @@ def get_args():
     parser = argparse.ArgumentParser(description="")
     
     # 账户创建相关参数
-    parser.add_argument("--usr_name", type=str, required=True, help="usr_name")
-    parser.add_argument("--init_fund",type=float,required=True,help="init_funds")
+    parser.add_argument("--usr_name", type=str, default="demo", help="usr_name")
+    parser.add_argument("--init_fund",type=float,default=1000000,help="init_funds")
     parser.add_argument("--margin_call",type=float,default=100000.00)
     
     # 开仓相关参数
@@ -31,7 +31,7 @@ def get_args():
     parser.add_argument("--low",type=str,default='low')
     parser.add_argument("--settle",type=str,default='settle')
     
-    parser.add_argument("--shares",type=int)
+    parser.add_argument("--shares",type=int,default=1)
 
     parser.add_argument('--stop_loss', type=parse_mixed_value, nargs='+',)
 
