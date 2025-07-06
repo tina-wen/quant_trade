@@ -22,8 +22,6 @@ def get_args():
     # 开仓相关参数
     parser.add_argument("--code",type=str,required=True,help="contract code")
 
-    parser.add_argument("--price_csv",type=str,required=True,)
-    parser.add_argument("--time_col",type=str)
     parser.add_argument("--target",type=str,default='open')
     parser.add_argument("--source",type=str)
     parser.add_argument("--start_time",type=str,)

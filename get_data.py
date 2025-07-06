@@ -1,24 +1,77 @@
 import pandas as pd
+from datetime import datetime
+from vnpy_adaptor import my_sql_database
+from vnpy.trader.constant import Exchange,Interval
+from typing import Dict
+
+price_cols = ['datetime','open_price','high_price','close_price','low_price','settle_price']
+data_query = my_sql_database()
+list_bar_overview = [x.__dict__['__data__'] for x in data_query.get_bar_overview()]
+overview_df = pd.DataFrame.from_records(list_bar_overview)
+
+class TimesCache:
+    _cache: Dict[str,datetime] = {}
+    @classmethod
+    def call(cls, func, code: str, trade_date: datetime, key: str = 'times'):
+        if key == 'times':
+            if code in cls._cache:
+                return cls._cache[code]
+            # 首次调用，执行 func 并缓存
+            result = func(code, trade_date, key)
+            cls._cache[code] = result
+            return result
+        return func(code, trade_date, key)  # 不缓存
+
+# 基于合约代码获取交易所
+def get_exchange(code:str):
+    return overview_df.set_index('symbol')['exchange'].loc[code.split('.')[0]]
+    
+# 获取合约结算信息
+def get_contract_info(code:str,trade_date:datetime,key:str,price:float = None):
+    code = code.split('.')[0]
+
+    contr = data_query.load_contr_info(symbol=code,start=trade_date,end=trade_date)
+    if len(contr) == 0:
+        raise KeyError(f'合约{code}:{trade_date.strftime("%Y-%m-%d")}不是交易日或数据库中没有{trade_date.strftime("%Y-%m-%d")}的合约结算数据')
+    contr_dict = contr[0].__dict__
+
+    ### 保证金和手续费的计算封装，不暴露原始数据
+    # 计算保证金占用，入参key必含'margin'
+    if 'margin' in key:
+        margin = contr_dict.get(key,None)
+        if price and margin < 1:
+            return margin * price
+        return margin
+
+    # 计算手续费，入参key必含'fee'
+    if key == 'today_offset_fee':
+        return contr_dict.get(key,None)
+    if key == 'fee':
+        fee,fee_rate = contr_dict['fee'], contr_dict['fee_rate']
+        return max(fee, price*fee_rate)
+
+    return contr_dict[key]
 
 
-# 获取合约信息、价格数据等，无论是通过本地文件还是外部接口，逻辑都独立出来
-contract_info_list = {'A1301.XDCE':{'margin_type':'float','margin_ratio':0.07,'margin':None,'commission_type':'fixed','commission_fee':2.0,'commission_rate':None,'times':10}}
-# 待改，需要和args抽离开，只与code相关，出于性能考虑或改为数据库逻辑
-from get_args import args
-price_df = pd.read_csv(args.price_csv,index_col = args.time_col)
 
-def get_contract_info(code):
-    return contract_info_list[code]
-
-# 待改！！
-def get_price_by_code(code):
+# 基于合约代码，从数据库读取一段时期的K线价格，并以dataframe格式返回
+def get_price_by_code(code: str, exchange: Exchange, start_time: datetime, end_time: datetime, interval: Interval):
+    list_bar = data_query.load_bar_data(symbol=code,exchange=exchange,start=start_time,end=end_time,interval=interval)
+    data = pd.DataFrame.from_records([x.__dict__ for x in list_bar])
+    if len(data) == 0:
+        raise KeyError(f"本地数据库中没有{code}合约在{start_time.strftime('%Y-%m-%d %H:%M:%S')}到{end_time.strftime('%Y-%m-%d %H:%M:%S')}的数据，请核对时间范围或自行下载写入")
+    price_df = data[price_cols].set_index('datetime')
     return price_df
 
 
 class DataQuery:
-    def __init__(self,code: str,**config):
+    def __init__(self, code: str, exchange: Exchange, start_time: datetime, end_time: datetime, interval: Interval,**config):
+        code = code.split('.')[0]
         self.code = code  # 合约代码
-        self.price = get_price_by_code(code) # 完整的单合约的价格序列，符合一般量价数据格式，包括开收高低、结算价等
+        price_df = get_price_by_code(code, exchange, start_time, end_time, interval) # 完整的单合约的价格序列，符合一般量价数据格式，包括开收高低、结算价等
+        self.trade_days = price_df.index.tolist()
+        price_df.columns = [x.replace("_price","") for x in price_df.columns]
+        self.price = price_df
         # config为一套数据查询格式，类似标的价格的列名
         self.query_config = config
         self.target_price, self.settle_price = list(map(lambda key: self._get_price_by_key(key),["target","settle"]))
@@ -26,6 +79,6 @@ class DataQuery:
         self.close_price = self.target_price.tolist()
 
     def _get_price_by_key(self,key: str):
-        return self.price[self.query_config.get(key,"no_this_name")]
+        return self.price[self.query_config.get(key,None)]
 
 

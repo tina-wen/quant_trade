@@ -1,29 +1,12 @@
 import os
 import logging
-#LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 from collections import deque
 from .utils import get_log_name
 import pandas as pd
 from get_args import args
-from get_data import get_contract_info,DataQuery
-from datetime import time,timedelta
-
-
-class contracts:
-    def __init__(self,code):
-        ###基于合约代码构造实例####
-        self.code = code
-        self.contract_info = get_contract_info(code)
-        for key,value in self.contract_info.items():
-            setattr(self,key,value)
-        
-    def calc_margin(self,open_price):
-        ###计算保证金占用###
-        return self.margin * self.times if self.margin_type == 'fixed' else open_price * self.times * self.margin_ratio
-    
-    def calc_commission(self,price):
-        ###计算给定金额交易下的手续费###
-        return price * self.times * self.commission_rate if self.commission_type == 'float' else self.commission_fee * self.times
+from get_data import get_exchange,get_contract_info,TimesCache,DataQuery
+from datetime import time,timedelta,datetime
+from vnpy.trader.constant import Interval
 
 
 class trade_items:
@@ -36,14 +19,13 @@ class trade_items:
         self.open_time = open_time
         # 开仓时新建一笔交易单实例
         self.code = code
-        self.contract = contracts(self.code)
         self.open_price = open_price
         self.prev_set_price = open_price
         self.direction = direction
         # 保证金占用
-        self.margin = self.contract.calc_margin(self.open_price)
+        self.margin = get_contract_info(code,open_time,direction+'_margin',open_price) #self.contract.calc_margin(self.open_price,open_time)
         # 开仓手续费
-        self.commission = self.get_trade_commission(open_price)
+        self.commission = get_contract_info(code,open_time,'fee',open_price)
         # 交易盈利
         self.profit = 0
         # 该笔交易止损点
@@ -56,27 +38,24 @@ class trade_items:
             elif self.direction == 'long':
                 self.stop_loss_point = open_price * (1 - ratio)
     
-    def get_margin(self):
-        return self.margin
 
-    def get_trade_commission(self,price):
-        ## 区分开平仓动作下的手续费，只和交易价格相关
-        ## TODO:手续费可能单/双边，固定/浮动收取
-        return self.contract.calc_commission(price)
+    def get_trade_commission(self,price:float,time):
+        return get_contract_info(self.code,time,'fee',price)
     
     def get_profits(self):
         return self.profit
 
-    def close_trade(self,close_price,direction):
+    def close_trade(self,close_price,direction,date):
         if direction == self.direction:
             raise ValueError(f'平仓方向不对：当前合约{self.code}持仓为{self.direction}，不支持{direction}的平仓动作')
+        times = TimesCache.call(get_contract_info,self.code,date,'times')
         if self.direction == 'short':
-            self.profit += (self.open_price - close_price) * self.contract.contract_info['times']
+            self.profit += (self.open_price - close_price) * times
         elif self.direction == 'long':
-            self.profit += (close_price - self.open_price) * self.contract.contract_info['times']
+            self.profit += (close_price - self.open_price) * times
         # 账户中平仓动作清零保证金必须在此之前
         self.margin = 0
-        self.commission += self.get_trade_commission(close_price)
+        self.commission += self.get_trade_commission(close_price,date)
 
         
 class acc_stats:
@@ -91,10 +70,10 @@ class acc_stats:
 ###已平仓交易单
         self.close_trade_items = {}
         #记录日志
-        dir = args.log_dir
-        if not os.path.exists(dir):
-            os.makedirs(dir)
-        logging.basicConfig(filename=os.path.join(dir,get_log_name(usr_name)), level=logging.DEBUG)
+        log_dir = args.log_dir
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        logging.basicConfig(filename=os.path.join(log_dir,get_log_name()), level=logging.INFO)
         logging.info(f"用户{self.usr}已注册，初始资金为{init_funds}")
     
     def gain_by_category(self):
@@ -137,10 +116,10 @@ class acc_stats:
     def open_pos(self,code:str,price:float,direction:str,stop_loss:tuple,time):
         # 判断能否开仓
         trade_item = trade_items(code,price,direction,stop_loss,time)
-        if self.funds < (trade_item.get_margin() + trade_item.get_trade_commission(price)) :
+        margin,commission_fee = trade_item.margin,trade_item.get_trade_commission(price,time)
+        if self.funds < margin + commission_fee:
             logging.error(f'{time}流动资金{self.funds}不足以开仓！')
             raise ValueError(f'{time}流动资金{self.funds}不足以开仓！')
-        margin,commission_fee = trade_item.get_margin(),trade_item.get_trade_commission(price) 
         self.funds -= margin + commission_fee
         self.balance -= commission_fee
         if code in self.open_trade_items:
@@ -148,7 +127,7 @@ class acc_stats:
         else:
             self.open_trade_items[code] = deque([trade_item])
         ###TODO:记录日志###
-        logging.info(f'交易日{time}，合约{code}开仓1手，方向为{direction}，开仓价为{price}，手续费为{commission_fee}，保证金占用{margin}')
+        logging.info(f'交易日{time.strftime("%Y%m%d")}，合约{code}开仓1手，方向为{direction}，开仓价为{price}，手续费为{commission_fee}，保证金占用{margin}')
         logging.info(f'账户权益为{self.balance}，当前账户流动资金为{self.funds}')
 
     def get_target_close_trade(self,code,direction):
@@ -169,16 +148,18 @@ class acc_stats:
         '''
         对指定的某笔交易target_trade平仓
         '''
-        margin,commission_fee = target_trade.get_margin(),target_trade.get_trade_commission(price)
+        margin,commission_fee = target_trade.margin,target_trade.get_trade_commission(price,time)
         self.funds += margin - commission_fee
-        target_trade.close_trade(price,direction)
+        target_trade.close_trade(price,direction,time)
         profit = target_trade.get_profits()
         self.funds += profit
 
+        times = TimesCache.call(get_contract_info,code,time,'times')
+
         if direction == 'long':
-            self.balance += (target_trade.prev_set_price - price) * target_trade.contract.contract_info['times']
+            self.balance += (target_trade.prev_set_price - price) * times
         elif direction == 'short':
-            self.balance += (price - target_trade.prev_set_price) * target_trade.contract.contract_info['times']
+            self.balance += (price - target_trade.prev_set_price) * times
             
         self.balance -= commission_fee
         if code in self.close_trade_items:
@@ -187,25 +168,28 @@ class acc_stats:
             self.close_trade_items[code] = deque([target_trade])
         
         #### 记录交易日志
-        logging.info(f'交易日{time}，合约{code}平仓1手，方向为{direction}，平仓价为{price}，该笔交易盈利{profit}，手续费为{commission_fee}')
+        logging.info(f'交易日{time.strftime("%Y%m%d")}，合约{code}平仓1手，方向为{direction}，平仓价为{price}，该笔交易盈利{profit}，手续费为{commission_fee}')
         logging.info(f'当前账户权益为{self.balance}，账户流动资金为{self.funds}')
 
     
     # 逐日盯市函数
-    def MTM(self,limit,cur_trade_day):
-        ### TODO:是否需要追加保证金判断
+    def MTM(self,limit,cur_trade_day:datetime):
         for contract,trades in self.open_trade_items.items():
-            data_query = DataQuery(contract,**args.query_config)
-            settle_price = data_query.settle_price.loc[cur_trade_day]
+            exchange = get_exchange(contract.split('.')[0])
+            data_query = DataQuery(contract,exchange,cur_trade_day,cur_trade_day,Interval.DAILY,**args.query_config)
+            settle_price = data_query.settle_price.loc[str(cur_trade_day)[:10]]
+            
+            times = TimesCache.call(get_contract_info,contract,cur_trade_day,'times')
+
             for trade in trades:
                 if trade.direction == 'long':
-                    self.balance += (settle_price - trade.prev_set_price) * trade.contract.contract_info['times']
+                    self.balance += (settle_price - trade.prev_set_price) * times
                     trade.prev_set_price = settle_price
                 elif trade.direction == 'short':
-                    self.balance += (trade.prev_set_price - settle_price) * trade.contract.contract_info['times']
+                    self.balance += (trade.prev_set_price - settle_price) * times
                     trade.prev_set_price = settle_price
         ###日志记录逐日盯市后结算的账户权益
-        logging.info(f'交易日{cur_trade_day}的账户权益为{self.balance}，流动资金为{self.funds}，总保证金占用为{self.get_total_margin()}')
+        logging.info(f'交易日{cur_trade_day.strftime("%Y%m%d")}的账户权益为{self.balance}，流动资金为{self.funds}，总保证金占用为{self.get_total_margin()}')
         if self.balance < limit:
             logging.warning(f'账户权益为{self.balance}，已低于最低要求{limit}，请追加保证金！')
 

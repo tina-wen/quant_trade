@@ -4,6 +4,7 @@ from datetime import datetime, time
 import holidays
 from get_args import args
 from get_data import DataQuery
+from vnpy.trader.constant import Exchange,Interval
 
 
 def get_trade_day(start_date,end_date):
@@ -24,12 +25,15 @@ class TradeOrder:
     '''
     成交报单类
     '''
-    def __init__(self,signal,prices,code,stop_loss,n_shares):
+    def __init__(self,signal,prices,code:str,exchange:Exchange,interval:Interval,stop_loss,n_shares):
         self.signal = signal.tolist()
         time = signal.index.tolist()
-        self.time = [datetime.strptime(t,'%Y-%m-%d') for t in time]
+        #self.time = [datetime.strptime(t,'%Y-%m-%d') for t in time]
+        self.time = time
         self.prices = prices.tolist()
         self.code = code
+        self.exchange = exchange
+        self.interval = interval
         self.stop_loss = stop_loss
         self.shares = n_shares
 
@@ -39,7 +43,7 @@ class trade_simulation:
         # mode指回测或实盘模拟
         self.account = account
 
-    def backtest(self,start_time,end_time,trade_order):
+    def backtest(self,start_time:datetime,end_time:datetime,trade_order):
         # 确认需要每日结算的交易日区间
         if start_time.time() >= time(21,0,0):
             # start_time.date()无须结算balance
@@ -52,26 +56,22 @@ class trade_simulation:
         else:
             end_date = end_time.date()
 
-
-        # 获取[start_date,end_date]之间所有的交易日
-        trade_days = get_trade_day(start_date,end_date)
-    
+        data_query = DataQuery(trade_order.code, trade_order.exchange, start_time, end_time, trade_order.interval, **args.query_config)
 
         # 每日权益，字典，key为日期，value为当日账户权益
         daily_balances = {}
 
         # 交易日（结算日）的索引、交易信号的索引、交易日期（结算日期）
         no_day,index_signal = 0,0
-        day = trade_days[no_day]
+        day = data_query.trade_days[no_day]
         # 外层按照交易日循环，便于逐日盯视
         if_stop_loss = False
 
-        while no_day < len(trade_days):
-            day = trade_days[no_day]
+        while no_day < len(data_query.trade_days):
+            day = data_query.trade_days[no_day]
 
             # 对现有持仓止损
             if not if_stop_loss:
-                data_query = DataQuery(trade_order.code, **args.query_config)
                 open_price, high_price, low_price, close_price = data_query.open_price[index_signal], \
                                                                     data_query.high_price[index_signal], \
                                                                     data_query.low_price[index_signal], data_query.close_price[index_signal]
@@ -83,7 +83,7 @@ class trade_simulation:
             # 当天发生交易
             cur_time,signal,price = trade_order.time[index_signal],trade_order.signal[index_signal],\
                 trade_order.prices[index_signal]
-            while cur_time.date() <= day:
+            while cur_time.date() <= day.date():
                 # 如果之前发生了止损，且止损时仓位方向和信号一样，跳过该交易信号不执行
                 if signal != signal:
                     # 按照交易信号往前遍历
@@ -94,15 +94,15 @@ class trade_simulation:
                         trade_order.prices[index_signal]
                     continue
                 # 正常执行交易信号，拨回是否发生止损状态
-                n,dir = self.account.get_position_by_code(trade_order.code)
+                n,direction = self.account.get_position_by_code(trade_order.code)
                 # 当前账户标的合约无持仓，且交易信号不为空仓
-                if dir is None and signal and (not if_stop_loss or signal2dir(signal) != origin_dir):
+                if direction is None and signal and (not if_stop_loss or signal2dir(signal) != origin_dir):
                     for _ in range(trade_order.shares):
                         self.account.open_pos(trade_order.code,price,signal2dir(signal),trade_order.stop_loss,cur_time)
                     if_stop_loss = False
                 # 当前持仓和信号方向不一致，一定会要先平仓，平仓方向和持仓相反；如果信号方向不是0，则开仓，开仓的方向和平仓方向一致
-                elif dir != signal2dir(signal):
-                    close_dir = 'long' if dir == 'short' else 'short'
+                elif direction != signal2dir(signal):
+                    close_dir = 'long' if direction == 'short' else 'short'
                     for _ in range(n):
                         target_trade = self.account.get_target_close_trade(trade_order.code,close_dir)
                         self.account.close_pos(trade_order.code,price,close_dir,target_trade,cur_time)
@@ -118,7 +118,7 @@ class trade_simulation:
                     trade_order.prices[index_signal]
 
             # 当天盯市结算
-            self.account.MTM(args.margin_call,str(day)[:10])
+            self.account.MTM(args.margin_call,day)
             daily_balances[day] = {'balance':self.account.balance}
             no_day += 1
   
