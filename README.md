@@ -1,199 +1,123 @@
-# 期货回测框架
-指定任意策略，本地实现标的合约的回测表现
+# ������ Quant Trade：灵活的期货策略回测框架
 
-提供
-- 回测过程中的**完整交易日志**
-- 回测结果：策略绩效表现，包括**年化收益率、夏普比率、最大回撤、胜率和盈亏比**
+一个支持多种策略、支持 tushare 接入的期货回测系统。只需一个 tushare token 和本地 MySQL，即可快速开始。
+> ������ English version: [README_EN.md](./README_EN.md)
+---
 
-优势
-- **数据管理**：只需要一个tushare token，通过本地MySQL方便快速实现数据的增删改查以及可视化  
-- 无需担心**策略泄露**：策略信号生成和回测相互解耦，可以根据给定的任意策略信号或交易指令单独使用回测
-- 支持**任意基本面时序数据**进行回测
+## ������ 项目亮点
 
-## 环境配置与安装
-### vnpy库安装指南
-- Windows系统下可以通过whl文件快速安装
-- Linux环境，通过分别安装vnpy库和ta-lib库避免冲突
-1. 不通过pip install vnpy命令安装，git clone到本地进行编译安装
+- ������ **策略与回测解耦**：只需提供策略信号或交易指令即可回测，无需暴露策略源码。
+- ������ **支持基本面数据**：任意时间序列数据均可用于生成信号。
+- ������️ **本地数据库管理**：数据增删改查便捷高效，内置可视化接口。
+- ������ **完整交易日志**：记录每一笔交易与账户变化，方便调试与复盘。
+- ������ **策略绩效评估**：支持年化收益率、夏普比率、最大回撤、胜率、盈亏比等指标。
+
+---
+
+## ������ 支持策略（详见 `signals.py`）
+
+| 策略名称 | 参数说明 |
+|----------|----------|
+| ma       | 滞后期：`--lag` |
+| dma      | 短均线、长均线：`--short`, `--long` |
+| mom      | 动量滞后期：`--lag` |
+| qtl      | 分位区间：`--lbr`, `--ubr` |
+| abs      | 固定阈值：`--level` |
+| mr       | 均值回归滞后期、标准差阈值：`--lag`, `--threshold` |
+
+---
+
+## ������️ 安装与配置
+
+### 1. 安装依赖
+
+建议 **不使用 pip 安装 vnpy**，请手动 clone 编译：
+
 ```bash
-https://github.com/vnpy/vnpy.git
-```
-3. 修改如下文件
-   - install.sh，删除命令ta-lib-exists || install-ta-lib
-   - pyproject.toml，删除dependencies中关于ta-lib的那行
-4. 执行安装脚本
-```bash
+git clone https://github.com/vnpy/vnpy.git
+# 修改 install.sh 删除 ta-lib 安装部分
+# 修改 pyproject.toml 删除 ta-lib 依赖
 bash install.sh
 ```
-6. 通过conda安装ta-lib，避免cpp编译报错
+
+安装 ta-lib：
+
 ```bash
 conda install -c conda-forge ta-lib
 ```
-### 本地部署MySQL及期货数据库
-MySQL部署教程比较多，不再赘述
-1. MySQL中部署期货数据库
-```bash
-mysql -u root -p # 进入mySQL
-```
-2. 创建数据库，创建一个新用户，并赋予其调用期货数据库的权限
+
+### 2. 设置 MySQL 数据库
+
 ```sql
--- 创建期货数据库，命名
 CREATE DATABASE your_database;
--- 为交易系统创建用户名和密码
-CREATE USER 'your_user'@'your_host' IDENTIFIED BY 'your_password';
--- 赋予交易系统用户调用期货数据库的权限
-GRANT ALL PRIVILEGES ON your_database.* TO 'your_user'@'your_host';
+CREATE USER 'your_user'@'localhost' IDENTIFIED BY 'your_password';
+GRANT ALL PRIVILEGES ON your_database.* TO 'your_user'@'localhost';
 FLUSH PRIVILEGES;
 ```
-3. tushare数据接口
-[vnpy_tushare配置指南](https://github.com/vnpy/vnpy_tushare?tab=readme-ov-file "跳转vnpy_tushare的github项目主页")
-[tushare期货数据官方文档](https://tushare.pro/document/2?doc_id=134 "跳转Tushare官网")
-5. 插入数据库配置文件database_config.json，推荐放在./quant_trade路径下
+
+配置文件（放于 `./quant_trade/database_config.json`）：
+
 ```json
 {
-        "db_name":"your_database",
-        "db_user":"your_user",
-        "db_pwd":"your_password",
-        "db_host":"your_host",
-        "tushare_token":"your_tushare_token"
+  "db_name": "your_database",
+  "db_user": "your_user",
+  "db_pwd": "your_password",
+  "db_host": "localhost",
+  "tushare_token": "your_tushare_token"
 }
 ```
-### 安装本仓库
-```bash
-git clone https://github.com/tina-wen/quant_trade.git
-cd quant_trade
-```
 
-## 快速上手
-### 下载合约价格和结算数据
-- 支持从**本地csv**和**tushare期货数据库**下载K线数据并写入MySQL数据库。也支持tick数据下载和写入，具体可参考vnpy项目文档和本仓代码。
+---
+
+## ������ 快速开始
+
+### 下载并写入行情数据
+
 ```python
 from ts_download import save_csv_bar, save_ts_bar, save_ts_contr
-from vnpy.trader.constant import Exchange,Interval
-# 从本仓的price.csv（非真实数据）读取《test》合约的《日度》价格数据，表头中Unnamed: 0代表时间戳的列名
-# 假设该合约在《大商所》交易
-save_csv_bar('datasets/price.csv','Unnamed: 0','test',Exchange.DCE,Interval.DAILY)
-# 从tushare数据库下载2019年11月到期的国内铜期货合约，在2018年12月15日到2019年6月16日期间的日度合约结算数据
-# 包括合约报价倍数、多/空头的保证金（率）、（平今）交易手续费率等
-save_ts_contr('CU1911',Exchange.SHFE,datetime(2018,10,1),datetime(2019,12,1))
-# 从tushare数据库下载2019年11月到期的国内铜期货合约，在2018年12月15日到2019年6月16日期间的日度K线数据
-# 包括开收高低和日度结算价数据
-save_ts_bar('CU1911',Exchange.SHFE,datetime(2018,10,1),datetime(2019,12,1),Interval.DAILY)
+from vnpy.trader.constant import Exchange, Interval
+
+save_csv_bar("datasets/price.csv", "Unnamed: 0", "test", Exchange.DCE, Interval.DAILY)
+save_ts_contr("CU1911", Exchange.SHFE, datetime(2018,10,1), datetime(2019,12,1))
+save_ts_bar("CU1911", Exchange.SHFE, datetime(2018,10,1), datetime(2019,12,1), Interval.DAILY)
 ```
-- 查看MySQL数据库中上述数据是否写入成功，可视化界面使用比较简单，以下为命令行查看
-```bash
-mysql -u root -p # 进入mySQL
-```
+
+### 数据验证（MySQL）
+
 ```sql
--- 进入期货数据库
-USE your_database;
--- 数据库中应该有dbbardata/dbbaroverview/dbtickdata/dbtickoverview/dbcontractdata五张表
 SHOW TABLES;
--- 查看K线数据是否写入成功
 SELECT * FROM dbbardata WHERE symbol = 'CU1911';
--- 查看合约结算数据是否写入成功
 SELECT * FROM dbcontractdata WHERE symbol = 'CU1911';
 ```
-- 
-### 命令行执行回测（一句话）
-对2019年11月到期的国内铜期货合约执行双均线策略，回测区间从2018年12月15日到2019年6月16日，根据T日收盘价序列生成信号，以T+1日的开盘价做交易
-- Linux环境
+
+### 一键回测
+
 ```bash
-bash test.sh
-```
-- Windows环境
-```sh
-python backtest_exec.py --code CU1911 --start_time 2018-12-15 --end_time 2019-06-16 --source close --trade_strategy dma --stop_loss float 0.1 None --log_dir ./log/demo/CU1911_dma 
+python backtest_exec.py   --code CU1911   --start_time 2018-12-15   --end_time 2019-06-16   --source close   --trade_strategy dma   --log_dir ./log/demo/CU1911_dma
 ```
 
-### 命令参数及含义
-- init_fund 初始资金（默认1000,000）；code 合约代码；shares 合约手数（默认开平仓都是1手）
-- source 用于生成策略信号的列名（表字段，可以是收盘价 close）；target 进行交易的列名（表字段，一般为开盘价 open） 
-- start_time 回测开始时间 yyyy-mm-dd；end_time 回测结束时间 yyyy-mm-dd；
-- trade_strategy 策略名（ma 移动平均，dma 双均线，mom 动量，qtl 历史分位数，abs 绝对值，mr 均值回归）
+---
 
-| 策略       | 涉及参数                     | 参数名 (get_args.py)     |
-|:-----------|:-----------------------------|:--------------------------|
-| 移动平均   | 滞后期                       | `--lag`                   |
-| 双均线     | 短均线、长均线               | `--short`, `--long`       |
-| 动量       | 滞后期                       | `--lag`                   |
-| 历史分位数 | 低分位数、高分位数           | `--lbr`, `--ubr`          |
-| 绝对值     | 绝对水平                     | `--level`                 |
-| 均值回归   | 滞后期、偏离均值的标准差倍数 | `--lag`, `--threshold`    |
+## ������ 回测结果示例
 
-:warning:当前仅支持上述六策略，代码可参考signals.py
+```text
+用户 demo 本次模拟的年化收益：-4.69%，夏普：-3.08，最大回撤：3.54%，胜率：33.33%，盈亏比：0.56
+```
 
-### 本仓支持的期货交易规则
-- 当前仅支持**同一个账户**中对**同一合约持仓**只能为**纯多头或纯空头**：当遍历账户持仓时，同时出现多头和空头，报错  
-- **先开先平**：同一方向持仓，优先平仓更早的  
-- 默认按**前一天收盘价生成量价因子**，按**后一天开盘价进行交易**：如果输入价格序列中未明确指定收盘价或开盘价序列，注意*未来函数*  
-- 默认按**回测周期的高、低价**判断持仓在当日**是否需要止损**：在输入价格序列中指定最高价和最低价序列  
+详细交易日志见 `./logs/账户名/合约_策略_时间.log`。
 
-### 回测结果
-以CU1911.SHF的双均线回测结果为例
-- 命令行打屏信息
-<pre>new account successfully created  
-用户demo本次模拟的年化收益：-4.69%，夏普：-3.08，最大回撤：3.54%，胜率：33.33%，盈亏比：0.56 </pre>
-- 生成日志路径为./logs/demo/CU1911_dma/share1_yyyymmddhhmmss.log（日志路径命名格式为：./logs/账户名/合约名_策略名/share(交易手数)_yyyymmddhhmmss格式的回测时间.log）
-<pre>INFO:root:交易日20190116，合约CU1911开仓1手，方向为short，开仓价为46980.0，手续费为2349.0，保证金占用3288.6000000000004
-INFO:root:账户权益为997651.0，当前账户流动资金为994362.4
-INFO:root:交易日20190116的账户权益为997001.0，流动资金为994362.4，总保证金占用为3288.6000000000004
-INFO:root:交易日20190117的账户权益为995951.0，流动资金为994362.4，总保证金占用为3288.6000000000004
-INFO:root:交易日20190118的账户权益为994751.0，流动资金为994362.4，总保证金占用为3288.6000000000004
-INFO:root:交易日20190121的账户权益为993051.0，流动资金为994362.4，总保证金占用为3288.6000000000004
-INFO:root:交易日20190122的账户权益为994801.0，流动资金为994362.4，总保证金占用为3288.6000000000004
-INFO:root:交易日20190123的账户权益为995201.0，流动资金为994362.4，总保证金占用为3288.6000000000004
-INFO:root:交易日20190124的账户权益为995901.0，流动资金为994362.4，总保证金占用为3288.6000000000004
-INFO:root:交易日20190125，合约CU1911平仓1手，方向为long，平仓价为47240.0，该笔交易盈利-1300.0，手续费为2362.0
-INFO:root:当前账户权益为993989.0，账户流动资金为993989.0
-INFO:root:交易日20190125，合约CU1911开仓1手，方向为long，开仓价为47240.0，手续费为2362.0，保证金占用3306.8
-INFO:root:账户权益为991627.0，当前账户流动资金为988320.2
-INFO:root:交易日20190125的账户权益为991677.0，流动资金为988320.2，总保证金占用为3306.8
-INFO:root:交易日20190128，合约CU1911平仓1手，方向为short，平仓价为47250.0，该笔交易盈利50.0，手续费为2362.5
-INFO:root:当前账户权益为989314.5，账户流动资金为989314.5
-INFO:root:交易日20190128，合约CU1911开仓1手，方向为short，开仓价为47250.0，手续费为2362.5，保证金占用3307.5000000000005
-INFO:root:账户权益为986952.0，当前账户流动资金为983644.5
-INFO:root:交易日20190128的账户权益为985402.0，流动资金为983644.5，总保证金占用为3307.5000000000005
-INFO:root:交易日20190129的账户权益为985702.0，流动资金为983644.5，总保证金占用为3307.5000000000005
-INFO:root:交易日20190130，合约CU1911平仓1手，方向为long，平仓价为47700.0，该笔交易盈利-2250.0，手续费为2385.0
-INFO:root:当前账户权益为982317.0，账户流动资金为982317.0
-INFO:root:交易日20190130，合约CU1911开仓1手，方向为long，开仓价为47700.0，手续费为2385.0，保证金占用3339.0000000000005
-INFO:root:账户权益为979932.0，当前账户流动资金为976593.0
-INFO:root:交易日20190130的账户权益为980032.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190131的账户权益为981182.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190201的账户权益为981832.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190211的账户权益为983032.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190212的账户权益为983332.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190213的账户权益为982032.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190214的账户权益为982832.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190215的账户权益为982482.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190218的账户权益为984932.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190219的账户权益为987482.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190220的账户权益为988882.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190221的账户权益为989882.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190222的账户权益为989232.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190225的账户权益为991882.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190226的账户权益为991482.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190227的账户权益为991432.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190228的账户权益为992182.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190301的账户权益为992182.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190304的账户权益为992682.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190305的账户权益为988182.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190306的账户权益为987082.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190307的账户权益为986732.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190308的账户权益为985732.0，流动资金为976593.0，总保证金占用为3339.0000000000005
-INFO:root:交易日20190311，合约CU1911平仓1手，方向为short，平仓价为48620.0，该笔交易盈利4600.0，手续费为2431.0
-INFO:root:当前账户权益为982101.0，账户流动资金为982101.0
-INFO:root:交易日20190311，合约CU1911开仓1手，方向为short，开仓价为48620.0，手续费为2431.0，保证金占用3403.4000000000005
-INFO:root:账户权益为979670.0，当前账户流动资金为976266.6
-INFO:root:交易日20190311的账户权益为978370.0，流动资金为976266.6，总保证金占用为3403.4000000000005</pre>
+---
 
-## TODO List
-- [ ] 多合约回测
-- [ ] 可视化策略绩效图表
-- [ ] 因子库模式，对于标的合约历史价格序列，自动挖掘有效因子
-- [ ] 基于论文和研报实现并嵌入新策略
+## ������ TODO
 
-## 未完工！
-👁️‍🗨️业余选手造的无聊小轮子：
-欢迎提ISSUE/PR/贡献，求star
+- [ ] 多合约组合回测
+- [ ] 策略表现可视化
+- [ ] 自动因子挖掘
+- [ ] 嵌入研报策略
+
+---
+
+## ������ 参与贡献
+
+这是业余选手造的轮子，欢迎 Issue / PR / Star！  
+������ [项目地址](https://github.com/tina-wen/quant_trade)
