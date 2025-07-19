@@ -1,22 +1,22 @@
-# Ì†æÌ∑† Quant Trade: A Flexible Futures Backtesting Framework
+#  Quant Trade: A Flexible Futures Backtesting Framework
 
 A modular and strategy-agnostic backtesting system for Chinese futures. With just a Tushare token and MySQL database, you can start backtesting your strategy in minutes.
-> Ì†ºÌø† ‰∏≠ÊñáÁâàËØ∑ËßÅÔºö[README.md](./README.md)
+>  ‰∏≠ÊñáÁâàËØ∑ËßÅÔºö[README.md](./README.md)
 
 
 ---
 
-## Ì†ΩÌ∫Ä Highlights
+##  Highlights
 
-- Ì†ΩÌ≤° **Strategy/Backtest Separation**: Cleanly decouples strategy generation from execution logic.
-- Ì†ΩÌ≥ä **Support for Fundamental Data**: Any time series can be used to generate trading signals.
-- Ì†ΩÌª¢Ô∏è **Local MySQL Management**: Structured, fast, and scalable data storage.
-- Ì†æÌ∑™ **Complete Trade Logs**: Every trade is recorded for transparency and debugging.
-- Ì†ΩÌ≥à **Performance Metrics**: Annual return, Sharpe ratio, drawdown, win rate, and PnL ratio.
+-  **Strategy/Backtest Separation**: Cleanly decouples strategy generation from execution logic.
+-  **Support for Fundamental Data**: Any time series can be used to generate trading signals.
+-  **Local MySQL Management**: Structured, fast, and scalable data storage.
+-  **Complete Trade Logs**: Every trade is recorded for transparency and debugging.
+-  **Performance Metrics**: Annual return, Sharpe ratio, drawdown, win rate, and PnL ratio.
 
 ---
 
-## Ì†æÌ∑© Built-in Strategies (`signals.py`)
+##  Built-in Strategies (`signals.py`)
 
 | Strategy | Parameters |
 |----------|------------|
@@ -29,7 +29,7 @@ A modular and strategy-agnostic backtesting system for Chinese futures. With jus
 
 ---
 
-## Ì†ΩÌª†Ô∏è Installation & Configuration
+##  Installation & Configuration
 
 ### 1. Install Dependencies
 
@@ -71,7 +71,7 @@ Configuration file (`quant_trade/database_config.json`):
 
 ---
 
-## Ì†ºÌøÅ Quickstart
+##  Quickstart
 
 ### Download and Save Bar Data
 
@@ -100,7 +100,7 @@ python backtest_exec.py   --code CU1911   --start_time 2018-12-15   --end_time 2
 
 ---
 
-## Ì†ΩÌ≥à Example Output
+##  Example Output
 
 ```text
 Demo annualized return: -4.69%, Sharpe: -3.08, Max Drawdown: 3.54%, Win rate: 33.33%, PnL ratio: 0.56
@@ -110,7 +110,7 @@ Detailed logs at `./logs/{account}/{symbol_strategy_time}.log`
 
 ---
 
-## Ì†ΩÌ≥ö Roadmap
+##  Roadmap
 
 - [ ] Multi-symbol portfolio backtesting
 - [ ] Strategy visualization tools
@@ -119,7 +119,7 @@ Detailed logs at `./logs/{account}/{symbol_strategy_time}.log`
 
 ---
 
-## Ì†æÌ¥ù Contributing
+## Contributing
 
 This is a personal weekend project ‚Äî feel free to submit issues, PRs, or give it a ‚≠ê.  
-Ì†ΩÌ±â [GitHub Project](https://github.com/tina-wen/quant_trade)
+ [GitHub Project](https://github.com/tina-wen/quant_trade)
