@@ -2,6 +2,9 @@
 
 一个支持多种策略、支持 tushare 接入的期货回测系统。只需一个 tushare token 和本地 MySQL，即可快速开始。
 >  English version: [README_EN.md](./README_EN.md)
+
+<img width="1024" height="1024" alt="ChatGPT Image 2025年7月19日 22_42_30" src="https://github.com/user-attachments/assets/7cb17587-79be-4e2a-9b87-5c54a5be40de" />
+
 ---
 
 ## 项目亮点
