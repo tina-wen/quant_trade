@@ -9,8 +9,8 @@ from vnpy.trader.object import HistoryRequest
 from datetime import datetime
 import json
 
-with open("","r") as f:
-    db_config = json.load("database_config.json")
+with open("database_config.json","r") as f:
+    db_config = json.load(f)
 
 db_query = my_sql_database()
 ts_api = ts_df(db_config.get('tushare_token',None))
@@ -46,9 +46,9 @@ def save_ts_contr(code, exchange: Exchange, start: datetime, end: datetime):
 
 
 if __name__ == "__main__":
-    #save_csv_bar('datasets/price.csv','Unnamed: 0','test_A1301',Exchange.DCE,Interval.DAILY)   
-    #save_ts_contr('CU1911',Exchange.SHFE,datetime(2018,10,1),datetime(2019,12,1))
-    save_ts_bar('CU1911',Exchange.SHFE,datetime(2018,10,1),datetime(2019,12,1),Interval.DAILY)
+    save_csv_bar('datasets/price.csv','Unnamed: 0','test_A1301',Exchange.DCE,Interval.DAILY)   
+    save_ts_contr('CU1911',Exchange.SHFE,datetime(2018,10,1),datetime(2019,12,1))
+    # save_ts_bar('CU1911',Exchange.SHFE,datetime(2018,10,1),datetime(2019,12,1),Interval.DAILY)
 
 
 
