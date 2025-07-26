@@ -209,7 +209,7 @@ class ts_df(Datafeed):
         self.password = ts_pwd
 
     # query_bar_data加一个字段settle_price
-    def query_bar_history(self, req, output = print) -> list[BarDataV2] | None:
+    def query_bar_history(self, req, output = print) -> list[BarDataV2]:
         """查询k线数据"""
         if not self.inited:
             self.init(output)
@@ -220,15 +220,15 @@ class ts_df(Datafeed):
         start: datetime = req.start.strftime("%Y-%m-%d %H:%M:%S")
         end: datetime = req.end.strftime("%Y-%m-%d %H:%M:%S")
 
-        ts_symbol: str | None = to_ts_symbol(symbol, exchange)
+        ts_symbol: str  = to_ts_symbol(symbol, exchange)
         if not ts_symbol:
             return None
 
-        asset: str | None = to_ts_asset(symbol, exchange)
+        asset: str  = to_ts_asset(symbol, exchange)
         if not asset:
             return None
 
-        ts_interval: str | None = INTERVAL_VT2TS.get(interval)
+        ts_interval: str  = INTERVAL_VT2TS.get(interval)
         if not ts_interval:
             return None
 
@@ -314,7 +314,7 @@ class ts_df(Datafeed):
 
         return data
     
-    def query_contract_data(self, req, output = print) -> list[ContractData] | None:
+    def query_contract_data(self, req, output = print) -> list[ContractData] :
         """查每日结算数据"""
         if not self.inited:
             self.init(output)
@@ -324,7 +324,7 @@ class ts_df(Datafeed):
         start: str = req.start.strftime("%Y%m%d")
         end: str = req.end.strftime("%Y%m%d")
 
-        ts_symbol: str | None = to_ts_symbol(symbol, exchange)
+        ts_symbol: str  = to_ts_symbol(symbol, exchange)
         if not ts_symbol:
             return None
 

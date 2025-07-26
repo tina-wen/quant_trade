@@ -2,9 +2,9 @@ from .account_statistics import *
 import pandas as pd
 from datetime import datetime, time
 import holidays
-from get_args import args
 from get_data import DataQuery
 from vnpy.trader.constant import Exchange,Interval
+from get_data import get_exchange,freq_dict
 
 
 def get_trade_day(start_date,end_date):
@@ -25,15 +25,15 @@ class TradeOrder:
     '''
     成交报单类
     '''
-    def __init__(self,signal,prices,code:str,exchange:Exchange,interval:Interval,stop_loss,n_shares):
+    def __init__(self,signal,prices,code:str,interval:str,stop_loss,n_shares):
         self.signal = signal.tolist()
         time = signal.index.tolist()
         #self.time = [datetime.strptime(t,'%Y-%m-%d') for t in time]
         self.time = time
         self.prices = prices.tolist()
         self.code = code
-        self.exchange = exchange
-        self.interval = interval
+        self.exchange = get_exchange(code)
+        self.interval = freq_dict.get(interval)
         self.stop_loss = stop_loss
         self.shares = n_shares
 
@@ -43,7 +43,7 @@ class trade_simulation:
         # mode指回测或实盘模拟
         self.account = account
 
-    def backtest(self,start_time:datetime,end_time:datetime,trade_order):
+    def backtest(self,start_time:datetime,end_time:datetime,trade_order,margin_call,data_query):
         # 确认需要每日结算的交易日区间
         if start_time.time() >= time(21,0,0):
             # start_time.date()无须结算balance
@@ -55,8 +55,6 @@ class trade_simulation:
             end_date = end_time.date() - timedelta(days = 1)
         else:
             end_date = end_time.date()
-
-        data_query = DataQuery(trade_order.code, trade_order.exchange, start_time, end_time, trade_order.interval, **args.query_config)
 
         # 每日权益，字典，key为日期，value为当日账户权益
         daily_balances = {}
@@ -108,7 +106,11 @@ class trade_simulation:
                         self.account.close_pos(trade_order.code,price,close_dir,target_trade,cur_time)
                     if signal and (not if_stop_loss or signal2dir(signal) != origin_dir):
                         for _ in range(trade_order.shares):
-                            self.account.open_pos(trade_order.code,price,close_dir,trade_order.stop_loss,cur_time)
+                            res = self.account.open_pos(trade_order.code,price,close_dir,trade_order.stop_loss,cur_time)
+                            if not res:
+                                # 如果开仓失败，跳出循环，等待下一交易信号
+                                if_stop_loss = True
+                                break
                         if_stop_loss = False
                 # 按照交易信号往前遍历
                 index_signal += 1
@@ -118,20 +120,23 @@ class trade_simulation:
                     trade_order.prices[index_signal]
 
             # 当天盯市结算
-            self.account.MTM(args.margin_call,day)
+            self.account.MTM(margin_call,day,data_query)
             daily_balances[day] = {'balance':self.account.balance}
             no_day += 1
   
         return daily_balances
 
-    def calc_performances(self,start_time,end_time,trade_order,n_tradeday = 250,risk_free_rate = 0.04):
+    def calc_performances(self,start_time,end_time,trade_order,margin_call,data_query,n_tradeday = 250,risk_free_rate = 0.04):
 
-        daily_balances = self.backtest(start_time,end_time,trade_order)
+        daily_balances = self.backtest(start_time,end_time,trade_order,margin_call,data_query)
 
         pnl = pd.DataFrame.from_dict(daily_balances,orient = 'index')
         pnl.sort_index(inplace = True)
         # 根据pnl计算年化收益、夏普比率、最大回撤
         pnl['daily_profit'] = pnl['balance'].diff()
+
+        self.pnl = pnl
+
         annual_ret = pnl['daily_profit'].mean()/self.account.init_bal * n_tradeday
         annual_vol = (pnl['daily_profit']/self.account.init_bal).std() * n_tradeday ** 0.5
         sharpe_ratio = (annual_ret - risk_free_rate) / annual_vol
@@ -152,7 +157,11 @@ class trade_simulation:
         winning_rat, profit2loss = n_win_trades/n_trades, gain/loss
         
         print(f'用户{self.account.usr}本次模拟的年化收益：{f"{annual_ret:.2%}"}，夏普：{round(sharpe_ratio,2)}，最大回撤：{f"{max_drawdown:.2%}"}，胜率：{f"{winning_rat:.2%}"}，盈亏比：{round(profit2loss,2)}')
-
+        self.perf_dict = {"年化收益": f"{annual_ret:.2%}",
+                          "夏普比率": round(sharpe_ratio,2),
+                          "最大回撤": f"{max_drawdown:.2%}",
+                          "胜率": f"{winning_rat:.2%}",
+                          "盈亏比": round(profit2loss,2)}
         
                 
 

@@ -5,9 +5,13 @@ from vnpy.trader.constant import Exchange,Interval
 from typing import Dict
 
 price_cols = ['datetime','open_price','high_price','close_price','low_price','settle_price']
+
 data_query = my_sql_database()
 list_bar_overview = [x.__dict__['__data__'] for x in data_query.get_bar_overview()]
 overview_df = pd.DataFrame.from_records(list_bar_overview)
+
+freq_dict = {'周': Interval.WEEKLY, '分钟': Interval.MINUTE, '日线': Interval.DAILY}
+Ex_dict = {"SHFE": Exchange.SHFE, "INE": Exchange.INE, "DCE": Exchange.DCE, "CZCE": Exchange.CZCE}
 
 class TimesCache:
     _cache: Dict[str,datetime] = {}
@@ -55,7 +59,9 @@ def get_contract_info(code:str,trade_date:datetime,key:str,price:float = None):
 
 
 # 基于合约代码，从数据库读取一段时期的K线价格，并以dataframe格式返回
-def get_price_by_code(code: str, exchange: Exchange, start_time: datetime, end_time: datetime, interval: Interval):
+def get_price_by_code(code: str, start_time: datetime, end_time: datetime, interval: str):
+    exchange = get_exchange(code)
+    interval = freq_dict.get(interval, Interval.DAILY)
     list_bar = data_query.load_bar_data(symbol=code,exchange=exchange,start=start_time,end=end_time,interval=interval)
     data = pd.DataFrame.from_records([x.__dict__ for x in list_bar])
     if len(data) == 0:
@@ -65,20 +71,18 @@ def get_price_by_code(code: str, exchange: Exchange, start_time: datetime, end_t
 
 
 class DataQuery:
-    def __init__(self, code: str, exchange: Exchange, start_time: datetime, end_time: datetime, interval: Interval,**config):
+    def __init__(self, code: str, start_time: datetime, end_time: datetime, interval: Interval, target: str):
         code = code.split('.')[0]
         self.code = code  # 合约代码
-        price_df = get_price_by_code(code, exchange, start_time, end_time, interval) # 完整的单合约的价格序列，符合一般量价数据格式，包括开收高低、结算价等
+        price_df = get_price_by_code(code, start_time, end_time, interval) # 完整的单合约的价格序列，符合一般量价数据格式，包括开收高低、结算价等
         self.trade_days = price_df.index.tolist()
         price_df.columns = [x.replace("_price","") for x in price_df.columns]
         self.price = price_df
-        # config为一套数据查询格式，类似标的价格的列名
-        self.query_config = config
-        self.target_price, self.settle_price = list(map(lambda key: self._get_price_by_key(key),["target","settle"]))
+        self.target_price, self.settle_price = self.price[target], self.price['settle']
         self.open_price, self.high_price, self.low_price, = list(map(lambda key: self._get_price_by_key(key).tolist(),["open","high","low",])) 
         self.close_price = self.target_price.tolist()
 
     def _get_price_by_key(self,key: str):
-        return self.price[self.query_config.get(key,None)]
+        return self.price[key]
 
 

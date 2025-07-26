@@ -3,7 +3,6 @@ import logging
 from collections import deque
 from .utils import get_log_name
 import pandas as pd
-from get_args import args
 from get_data import get_exchange,get_contract_info,TimesCache,DataQuery
 from datetime import time,timedelta,datetime
 from vnpy.trader.constant import Interval
@@ -13,7 +12,7 @@ class trade_items:
     '''
     TODO：应该是单例？？
     '''
-    def __init__(self,code:str,open_price:float,direction:str,stop_loss:tuple,open_time):
+    def __init__(self,code:str,open_price:float,direction:str,stop_loss:float,open_time):
         # 生成一笔交易单号：用交易所或者自己生成
         # 记录开仓时间
         self.open_time = open_time
@@ -29,14 +28,13 @@ class trade_items:
         # 交易盈利
         self.profit = 0
         # 该笔交易止损点
-        type,ratio,point = stop_loss
-        if type == 'fixed':
-            self.stop_loss_point = point
-        elif type == 'float':
+        if stop_loss > 1.0:
+            self.stop_loss_point = stop_loss
+        else:
             if self.direction == 'short':
-                self.stop_loss_point = open_price * (1 + ratio)
+                self.stop_loss_point = open_price * (1 + stop_loss)
             elif self.direction == 'long':
-                self.stop_loss_point = open_price * (1 - ratio)
+                self.stop_loss_point = open_price * (1 - stop_loss)
     
 
     def get_trade_commission(self,price:float,time):
@@ -59,7 +57,7 @@ class trade_items:
 
         
 class acc_stats:
-    def __init__(self,usr_name,init_funds):
+    def __init__(self,usr_name,init_funds,log_dir,shares):
         self.usr = usr_name
         # 流动资金和权益，权益和现金的不同发生在逐日盯市和交易结算时
         self.init_bal = init_funds
@@ -70,10 +68,10 @@ class acc_stats:
 ###已平仓交易单
         self.close_trade_items = {}
         #记录日志
-        log_dir = args.log_dir
+        log_dir = log_dir
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
-        logging.basicConfig(filename=os.path.join(log_dir,get_log_name()), level=logging.INFO)
+        logging.basicConfig(filename=os.path.join(log_dir,get_log_name(shares)), level=logging.INFO)
         logging.info(f"用户{self.usr}已注册，初始资金为{init_funds}")
     
     def gain_by_category(self):
@@ -119,7 +117,8 @@ class acc_stats:
         margin,commission_fee = trade_item.margin,trade_item.get_trade_commission(price,time)
         if self.funds < margin + commission_fee:
             logging.error(f'{time}流动资金{self.funds}不足以开仓！')
-            raise ValueError(f'{time}流动资金{self.funds}不足以开仓！')
+            err_msg = f'{time}流动资金{self.funds}不足以开仓！'
+            return err_msg
         self.funds -= margin + commission_fee
         self.balance -= commission_fee
         if code in self.open_trade_items:
@@ -129,6 +128,7 @@ class acc_stats:
         ###TODO:记录日志###
         logging.info(f'交易日{time.strftime("%Y%m%d")}，合约{code}开仓1手，方向为{direction}，开仓价为{price}，手续费为{commission_fee}，保证金占用{margin}')
         logging.info(f'账户权益为{self.balance}，当前账户流动资金为{self.funds}')
+        
 
     def get_target_close_trade(self,code,direction):
         '''
@@ -173,10 +173,9 @@ class acc_stats:
 
     
     # 逐日盯市函数
-    def MTM(self,limit,cur_trade_day:datetime):
+    def MTM(self,limit,cur_trade_day:datetime,data_query:DataQuery):
         for contract,trades in self.open_trade_items.items():
             exchange = get_exchange(contract.split('.')[0])
-            data_query = DataQuery(contract,exchange,cur_trade_day,cur_trade_day,Interval.DAILY,**args.query_config)
             settle_price = data_query.settle_price.loc[str(cur_trade_day)[:10]]
             
             times = TimesCache.call(get_contract_info,contract,cur_trade_day,'times')
