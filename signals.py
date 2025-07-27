@@ -85,7 +85,7 @@ class Quantile(TradeStrategy):
 @StrategyRegistry.register("abs")
 class AbsoluteValue(TradeStrategy):
     def _generate_signal(self, ):
-        level = self.config.get('abs_val','unknown')
+        level = self.config.get('level','unknown')
         signal = np.sign(self.source_data - level)
         signal = signal.reindex(self.target.index).shift(1).ffill()
         return signal

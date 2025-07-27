@@ -155,13 +155,14 @@ class trade_simulation:
                 elif profit < 0:
                     loss -= profit
         winning_rat, profit2loss = n_win_trades/n_trades, gain/loss
-        
         print(f'用户{self.account.usr}本次模拟的年化收益：{f"{annual_ret:.2%}"}，夏普：{round(sharpe_ratio,2)}，最大回撤：{f"{max_drawdown:.2%}"}，胜率：{f"{winning_rat:.2%}"}，盈亏比：{round(profit2loss,2)}')
         self.perf_dict = {"年化收益": f"{annual_ret:.2%}",
                           "夏普比率": round(sharpe_ratio,2),
                           "最大回撤": f"{max_drawdown:.2%}",
                           "胜率": f"{winning_rat:.2%}",
                           "盈亏比": round(profit2loss,2)}
+        if n_trades < 10:
+            self.perf_dict['警示信息'] = '成交单数过少，胜率/盈亏比可能不准确'
         
                 
 

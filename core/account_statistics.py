@@ -3,7 +3,7 @@ import logging
 from collections import deque
 from .utils import get_log_name
 import pandas as pd
-from get_data import get_exchange,get_contract_info,TimesCache,DataQuery
+from get_data import get_exchange,get_contract_info,Cache,DataQuery
 from datetime import time,timedelta,datetime
 from vnpy.trader.constant import Interval
 
@@ -22,9 +22,9 @@ class trade_items:
         self.prev_set_price = open_price
         self.direction = direction
         # 保证金占用
-        self.margin = get_contract_info(code,open_time,direction+'_margin',open_price) #self.contract.calc_margin(self.open_price,open_time)
+        self.margin = Cache.call(get_contract_info,code,open_time,direction+'_margin',price=open_price)#get_contract_info(code,open_time,direction+'_margin',open_price) #self.contract.calc_margin(self.open_price,open_time)
         # 开仓手续费
-        self.commission = get_contract_info(code,open_time,'fee',open_price)
+        self.commission = Cache.call(get_contract_info,code,open_time,'fee',price=open_price)
         # 交易盈利
         self.profit = 0
         # 该笔交易止损点
@@ -38,7 +38,8 @@ class trade_items:
     
 
     def get_trade_commission(self,price:float,time):
-        return get_contract_info(self.code,time,'fee',price)
+        return Cache.call(get_contract_info,self.code,time,'fee',price=price)
+
     
     def get_profits(self):
         return self.profit
@@ -46,7 +47,7 @@ class trade_items:
     def close_trade(self,close_price,direction,date):
         if direction == self.direction:
             raise ValueError(f'平仓方向不对：当前合约{self.code}持仓为{self.direction}，不支持{direction}的平仓动作')
-        times = TimesCache.call(get_contract_info,self.code,date,'times')
+        times = Cache.call(get_contract_info,self.code,date,'times')
         if self.direction == 'short':
             self.profit += (self.open_price - close_price) * times
         elif self.direction == 'long':
@@ -154,7 +155,7 @@ class acc_stats:
         profit = target_trade.get_profits()
         self.funds += profit
 
-        times = TimesCache.call(get_contract_info,code,time,'times')
+        times = Cache.call(get_contract_info,code,time,'times')
 
         if direction == 'long':
             self.balance += (target_trade.prev_set_price - price) * times
@@ -178,7 +179,7 @@ class acc_stats:
             exchange = get_exchange(contract.split('.')[0])
             settle_price = data_query.settle_price.loc[str(cur_trade_day)[:10]]
             
-            times = TimesCache.call(get_contract_info,contract,cur_trade_day,'times')
+            times = Cache.call(get_contract_info,contract,cur_trade_day,'times')
 
             for trade in trades:
                 if trade.direction == 'long':

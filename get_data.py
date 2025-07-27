@@ -10,30 +10,28 @@ data_query = my_sql_database()
 list_bar_overview = [x.__dict__['__data__'] for x in data_query.get_bar_overview()]
 overview_df = pd.DataFrame.from_records(list_bar_overview)
 
-freq_dict = {'周': Interval.WEEKLY, '分钟': Interval.MINUTE, '日线': Interval.DAILY}
+freq_dict = {'周': Interval.WEEKLY, '分钟': Interval.MINUTE, '日线': Interval.DAILY, '小时': Interval.HOUR}
 Ex_dict = {"SHFE": Exchange.SHFE, "INE": Exchange.INE, "DCE": Exchange.DCE, "CZCE": Exchange.CZCE}
 
-class TimesCache:
-    _cache: Dict[str,datetime] = {}
+class Cache:
+    _cache: Dict[str,any] = {}
     @classmethod
-    def call(cls, func, code: str, trade_date: datetime, key: str = 'times'):
-        if key == 'times':
-            if code in cls._cache:
-                return cls._cache[code]
-            # 首次调用，执行 func 并缓存
-            result = func(code, trade_date, key)
-            cls._cache[code] = result
-            return result
-        return func(code, trade_date, key)  # 不缓存
+    def call(cls, func, code: str, trade_date: datetime, key: str = 'times', **kwargs):
+        if code+'_'+key in cls._cache:
+            return cls._cache[code+'_'+key]
+        # 首次调用，执行 func 并缓存
+        result = func(code, trade_date, key, **kwargs)
+        cls._cache[code+'_'+key] = result
+        return result
+
 
 # 基于合约代码获取交易所
 def get_exchange(code:str):
-    return overview_df.set_index('symbol')['exchange'].loc[code.split('.')[0]]
+    return overview_df[overview_df['symbol'] == code].iloc[0].exchange
     
 # 获取合约结算信息
 def get_contract_info(code:str,trade_date:datetime,key:str,price:float = None):
     code = code.split('.')[0]
-
     contr = data_query.load_contr_info(symbol=code,start=trade_date,end=trade_date)
     if len(contr) == 0:
         raise KeyError(f'合约{code}:{trade_date.strftime("%Y-%m-%d")}不是交易日或数据库中没有{trade_date.strftime("%Y-%m-%d")}的合约结算数据')

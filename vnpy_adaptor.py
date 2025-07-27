@@ -9,10 +9,11 @@ from vnpy.trader.database import DB_TZ
 from copy import deepcopy
 import tushare as ts
 from vnpy_tushare import Datafeed
-from vnpy_tushare.tushare_datafeed import to_ts_symbol, to_ts_asset, INTERVAL_VT2TS, INTERVAL_ADJUSTMENT_MAP, CHINA_TZ
+from vnpy_tushare.tushare_datafeed import to_ts_symbol, INTERVAL_VT2TS, INTERVAL_ADJUSTMENT_MAP, CHINA_TZ
 from vnpy.trader.utility import round_to
 
 import json
+from functools import partial
 
 # 在BarData类添加settle_price字段
 from dataclasses import dataclass
@@ -208,43 +209,40 @@ class ts_df(Datafeed):
         self.username = ts_usr
         self.password = ts_pwd
 
+    def init(self, output=print):
+        super().init(output)
+        # Interval不支持Monthly
+        self.apis = dict(zip([Interval.WEEKLY, Interval.DAILY, Interval.HOUR, Interval.MINUTE], 
+                             [
+                                partial(self.pro.fut_weekly_monthly,freq='week'), 
+                                self.pro.fut_daily,
+                                partial(self.pro.ft_mins, freq = '60min'),
+                                partial(self.pro.ft_mins, freq = '1min')
+                            ]))
+
     # query_bar_data加一个字段settle_price
     def query_bar_history(self, req, output = print) -> list[BarDataV2]:
         """查询k线数据"""
         if not self.inited:
             self.init(output)
 
-        symbol: str = req.symbol
-        exchange: Exchange = req.exchange
-        interval: Interval = req.interval
         start: datetime = req.start.strftime("%Y-%m-%d %H:%M:%S")
         end: datetime = req.end.strftime("%Y-%m-%d %H:%M:%S")
 
-        ts_symbol: str  = to_ts_symbol(symbol, exchange)
+        ts_symbol: str  = to_ts_symbol(req.symbol, req.exchange)
         if not ts_symbol:
             return None
 
-        asset: str  = to_ts_asset(symbol, exchange)
-        if not asset:
-            return None
-
-        ts_interval: str  = INTERVAL_VT2TS.get(interval)
-        if not ts_interval:
-            return None
-
-        adjustment: timedelta = INTERVAL_ADJUSTMENT_MAP[interval]
+        adjustment: timedelta = INTERVAL_ADJUSTMENT_MAP.get(req.interval, 0)
+        api_inputs = {'ts_code': ts_symbol, 'start_date': start, 'end_date': end, }
+        if req.interval.value == 'd' or req.interval.value == 'w':
+            api_inputs.update(exchange=req.exchange.value)
+            
         try:
-            d1: DataFrame = ts.pro_bar(
-                ts_code=ts_symbol,
-                start_date=start,
-                end_date=end,
-                asset=asset,
-                freq=ts_interval
-            )
+            d1: DataFrame = self.apis[req.interval](**api_inputs)
         except OSError as ex:
             output(f"发生输入/输出错误：{ex.strerror}")
             return []
-
         df: DataFrame = deepcopy(d1)
 
         while True:
@@ -252,13 +250,7 @@ class ts_df(Datafeed):
                 break
             tmp_end: str = d1["trade_time"].values[-1]
 
-            d1 = ts.pro_bar(
-                ts_code=ts_symbol,
-                start_date=start,
-                end_date=tmp_end,
-                asset=asset,
-                freq=ts_interval
-            )
+            d1 = self.apis[req.interval](**api_inputs)
             df = pd.concat([df[:-1], d1])
 
         bar_keys: list[datetime] = []
@@ -273,7 +265,7 @@ class ts_df(Datafeed):
                 if row["open"] is None:
                     continue
 
-                if interval.value == "d":
+                if req.interval.value == "d" or req.interval.value == "w":
                     dt_str: str = row["trade_date"]
                     dt: datetime = datetime.strptime(dt_str, "%Y%m%d")
                 else:
@@ -283,23 +275,19 @@ class ts_df(Datafeed):
                 dt = dt.replace(tzinfo=CHINA_TZ)
 
                 turnover = row.get("amount", 0)
-                if turnover is None:
-                    turnover = 0
-
                 open_interest = row.get("oi", 0)
-                if open_interest is None:
-                    open_interest = 0
+                settle_price = row.get("settle",0) # 日内没有结算价数据
 
                 bar: BarDataV2 = BarDataV2(
-                    symbol=symbol,
-                    exchange=exchange,
-                    interval=interval,
+                    symbol=req.symbol,
+                    exchange=req.exchange,
+                    interval=req.interval,
                     datetime=dt,
                     open_price=round_to(row["open"], 0.000001),
                     high_price=round_to(row["high"], 0.000001),
                     low_price=round_to(row["low"], 0.000001),
                     close_price=round_to(row["close"], 0.000001),
-                    settle_price=round_to(row["settle"],0.000001),
+                    settle_price=settle_price,
                     volume=row["vol"],
                     turnover=turnover,
                     open_interest=open_interest,
@@ -307,7 +295,6 @@ class ts_df(Datafeed):
                 )
 
                 bar_dict[dt] = bar
-
         bar_keys = sorted(bar_dict.keys(), reverse=False)
         for i in bar_keys:
             data.append(bar_dict[i])
