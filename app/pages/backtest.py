@@ -65,7 +65,7 @@ end_date, end_time = st.date_input("结束时间", value=pd.to_datetime(late)), 
 start, end = datetime.combine(start_date, start_time), datetime.combine(end_date, end_time)
 
 # 交易频率
-interval = st.selectbox("交易频率", ["日线", "分钟", "周",])
+interval = st.selectbox("交易频率", ["日线", "分钟", "周", "小时"])
 
 # 回测
 ### 根据收盘价生成的信号（当日3点后出），最早只能用开盘价交易

@@ -6,7 +6,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # 然后用绝对导入
 
-from get_data import overview_df,get_exchange,freq_dict,Ex_dict,DataQuery
+from get_data import overview_df,get_exchange,freq_dict,Ex_dict,DataQuery,data_query
 from signals import get_signal
 from core.simulation import trade_simulation, TradeOrder, acc_stats
 from ts_download import save_csv_bar, save_ts_bar, save_ts_contr

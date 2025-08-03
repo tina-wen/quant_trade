@@ -41,6 +41,7 @@ class ContractData(BaseData):
     # 保证金（率）
     long_margin: float = 0.0  # 多头保证金率
     short_margin: float = 0.0  # 空头保证金率
+    settle: float = 0.0
 
 
 def df2BarList(df_input):
@@ -102,6 +103,7 @@ class DbContractData(Model):
 
     long_margin: DoubleField = DoubleField()
     short_margin: DoubleField = DoubleField()
+    settle: DoubleField = DoubleField()
 
     class Meta:
         database = get_db_config()
@@ -194,6 +196,7 @@ class my_sql_database(MysqlDatabase):
                     today_offset_fee = contract.today_offset_fee,
                     long_margin = contract.long_margin,
                     short_margin = contract.short_margin,
+                    settle = contract.settle,
                     gateway_name = "DB"
                     )
             contracts.append(contr)
@@ -320,7 +323,7 @@ class ts_df(Datafeed):
                 ts_code=ts_symbol,
                 start_date=start,
                 end_date=end,
-                fields = 'trade_date,trading_fee,trading_fee_rate,long_margin_rate,short_margin_rate,offset_today_fee'
+                fields = 'trade_date,trading_fee,trading_fee_rate,long_margin_rate,short_margin_rate,offset_today_fee,settle'
             )
             if len(df) == 0:
                 raise ValueError(f"未成功从tushare数据库中取得{ts_symbol}在{start}~{end}时期的合约数据，数据条数为0")
@@ -358,6 +361,7 @@ class ts_df(Datafeed):
                     today_offset_fee=row["offset_today_fee"],
                     long_margin=row["long_margin_rate"],
                     short_margin=row["short_margin_rate"],
+                    settle=row["settle"],
                     gateway_name="TS"
                 )
 

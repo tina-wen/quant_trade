@@ -46,10 +46,14 @@ def save_ts_bar(code, exchange: Exchange, start: datetime, end: datetime, interv
 
 def save_ts_contr(code, exchange: Exchange, start: datetime, end: datetime):
     req = HistoryRequest(symbol = code, exchange = exchange, start = start, end = end, interval = Interval.DAILY)
-    data = ts_api.query_contract_data(req)
+    try:
+        data = ts_api.query_contract_data(req)
+    except ValueError as e:
+        print(f"Error fetching contract data for {code}: {e}")
+        return False
     db_query.save_contr_info(data)
     return True
-
+    
 
 if __name__ == "__main__":
     save_csv_bar('datasets/price.csv','Unnamed: 0','test_A1301',Exchange.DCE,Interval.DAILY)   

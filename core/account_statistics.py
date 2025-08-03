@@ -22,6 +22,7 @@ class trade_items:
         self.prev_set_price = open_price
         self.direction = direction
         # 保证金占用
+        # 对open_time做强制修改，日期不变，时间强制修改为00:00:00
         self.margin = Cache.call(get_contract_info,code,open_time,direction+'_margin',price=open_price)#get_contract_info(code,open_time,direction+'_margin',open_price) #self.contract.calc_margin(self.open_price,open_time)
         # 开仓手续费
         self.commission = Cache.call(get_contract_info,code,open_time,'fee',price=open_price)
@@ -176,8 +177,9 @@ class acc_stats:
     # 逐日盯市函数
     def MTM(self,limit,cur_trade_day:datetime,data_query:DataQuery):
         for contract,trades in self.open_trade_items.items():
-            exchange = get_exchange(contract.split('.')[0])
-            settle_price = data_query.settle_price.loc[str(cur_trade_day)[:10]]
+            # exchange = get_exchange(contract.split('.')[0])
+            # settle_price = data_query.settle_price.loc[str(cur_trade_day)[:10]]
+            settle_price = Cache.call(get_contract_info,contract,cur_trade_day,'settle')
             
             times = Cache.call(get_contract_info,contract,cur_trade_day,'times')
 

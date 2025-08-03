@@ -45,16 +45,16 @@ class trade_simulation:
 
     def backtest(self,start_time:datetime,end_time:datetime,trade_order,margin_call,data_query):
         # 确认需要每日结算的交易日区间
-        if start_time.time() >= time(21,0,0):
-            # start_time.date()无须结算balance
-            start_date = start_time.date() + timedelta(days = 1)
-        else:
-            start_date = start_time.date()
-        if end_time.time() <= time(15,0,0):
-            # end_time.date()无须结算balance
-            end_date = end_time.date() - timedelta(days = 1)
-        else:
-            end_date = end_time.date()
+        # if start_time.time() >= time(21,0,0):
+        #     # start_time.date()无须结算balance
+        #     start_date = start_time.date() + timedelta(days = 1)
+        # else:
+        #     start_date = start_time.date()
+        # if end_time.time() <= time(15,0,0):
+        #     # end_time.date()无须结算balance
+        #     end_date = end_time.date() - timedelta(days = 1)
+        # else:
+        #     end_date = end_time.date()
 
         # 每日权益，字典，key为日期，value为当日账户权益
         daily_balances = {}
@@ -70,11 +70,14 @@ class trade_simulation:
 
             # 对现有持仓止损
             if not if_stop_loss:
-                open_price, high_price, low_price, close_price = data_query.open_price[index_signal], \
-                                                                    data_query.high_price[index_signal], \
-                                                                    data_query.low_price[index_signal], data_query.close_price[index_signal]
+                open_price, high_price, low_price, close_price = data_query.open_price[no_day], \
+                                                                data_query.high_price[no_day], \
+                                                                data_query.low_price[no_day], data_query.close_price[no_day]
 
-                if_stop_loss,origin_dir = self.account.do_stop_loss(trade_order.time[index_signal],trade_order.code,\
+                if index_signal >= len(trade_order.time):
+                    break
+                else:
+                    if_stop_loss,origin_dir = self.account.do_stop_loss(trade_order.time[index_signal],trade_order.code,\
                                                                     open_price,high_price,low_price,close_price)
                 
         

@@ -32,6 +32,7 @@ def get_exchange(code:str):
 # 获取合约结算信息
 def get_contract_info(code:str,trade_date:datetime,key:str,price:float = None):
     code = code.split('.')[0]
+    trade_date = trade_date.replace(hour=0, minute=0, second=0, microsecond=0)
     contr = data_query.load_contr_info(symbol=code,start=trade_date,end=trade_date)
     if len(contr) == 0:
         raise KeyError(f'合约{code}:{trade_date.strftime("%Y-%m-%d")}不是交易日或数据库中没有{trade_date.strftime("%Y-%m-%d")}的合约结算数据')
