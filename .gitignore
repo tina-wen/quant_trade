@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.cpython-*.pyc
+*.egg-info/
+*.egg
+dist/
+build/
+*.venv
+env/
+venv/
+*.log
+database_config.json

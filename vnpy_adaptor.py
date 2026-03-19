@@ -1,32 +1,52 @@
 # 不同类型数据与vnpy内置类BarData和TickData的转换
-from vnpy_mysql.mysql_database import DbBarData,DbTickData,DbBarOverview,DbTickOverview,MysqlDatabase
-from peewee import chunked,Model,CharField,DateTimeField,IntegerField,DoubleField,MySQLDatabase
-from vnpy.trader.object import BarData,TickData,BaseData
-from vnpy.trader.constant import Exchange,Interval
-from datetime import datetime
-from vnpy.trader.database import DB_TZ
-
 from copy import deepcopy
-import tushare as ts
-from vnpy_tushare import Datafeed
-from vnpy_tushare.tushare_datafeed import to_ts_symbol, INTERVAL_VT2TS, INTERVAL_ADJUSTMENT_MAP, CHINA_TZ
-from vnpy.trader.utility import round_to
-
-import json
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from functools import partial
 
-# 在BarData类添加settle_price字段
-from dataclasses import dataclass
+import pandas as pd
+from pandas import DataFrame
+from peewee import (
+    CharField,
+    DateTimeField,
+    DoubleField,
+    IntegerField,
+    Model,
+    ModelSelect,
+    MySQLDatabase,
+    chunked,
+)
+from vnpy.trader.constant import Exchange, Interval
+from vnpy.trader.database import DB_TZ
+from vnpy.trader.object import BarData, BaseData
+from vnpy.trader.utility import round_to
+from vnpy_mysql.mysql_database import (
+    DbBarData,
+    DbBarOverview,
+    DbTickData,
+    DbTickOverview,
+    MysqlDatabase,
+)
+from vnpy_tushare import Datafeed
+from vnpy_tushare.tushare_datafeed import (
+    CHINA_TZ,
+    INTERVAL_ADJUSTMENT_MAP,
+    to_ts_symbol,
+)
+
+
 @dataclass
 class BarDataV2(BarData):
     settle_price: float = 0.0
 
+
 BarData = BarDataV2
+
 
 # 定义新的数据类，合约的相关信息
 @dataclass
 class ContractData(BaseData):
-    symbol: str 
+    symbol: str
     exchange: Exchange
     date: datetime
 
@@ -52,40 +72,40 @@ def df2BarList(df_input):
     # 转为numpy_ndarray读取效率高于遍历DataFrame?
     np_data = df_input[req_cols].to_numpy()
     # 预分配List<BarData>内存
-    result = [None]*len(df_input)
+    result = [None] * len(df_input)
     for i in range(len(df_input)):
-        args = {col:np_data[i,j] for j,col in enumerate(req_cols)}
-        if 'gateway_name' not in args:
-            args['gateway_name'] = 'wtf'
-        if isinstance(args['datetime'],str):
+        args = {col: np_data[i, j] for j, col in enumerate(req_cols)}
+        if "gateway_name" not in args:
+            args["gateway_name"] = "wtf"
+        if isinstance(args["datetime"], str):
             from dateutil import parser
-            args['datetime'] = parser.parse(args['datetime'])
+
+            args["datetime"] = parser.parse(args["datetime"])
         # 通过dataclass装饰的纯数据类，直接以字典形式实例化
         result[i] = BarDataV2(**args)
     return result
 
 
-
 # 补丁：动态传入mysql连接参数
 def patched_db_models(models: list[Model], db: MySQLDatabase):
     for model in models:
-        if hasattr(model,'_meta'):
+        if hasattr(model, "_meta"):
             model._meta.database = db
-         
 
 
-def get_db_config(json_path:str = "database_config.json"):
-    with open(json_path,"r") as f:
-        configs = json.load(f)
+def get_db_config():
+    from config.loader import DB_CONFIG as configs
+
     db = MySQLDatabase(
-            configs.get("db_name",""),
-            user=configs.get("db_user",""),
-            password=configs.get("db_pwd",""),
-            host=configs.get("db_host","")
-            )
+        configs.get("db_name", ""),
+        user=configs.get("db_user", ""),
+        password=configs.get("db_pwd", ""),
+        host=configs.get("db_host", ""),
+    )
     return db
 
-patched_db_models([DbBarData,DbTickData,DbBarOverview,DbTickOverview],get_db_config())
+
+patched_db_models([DbBarData, DbTickData, DbBarOverview, DbTickOverview], get_db_config())
 
 # 新增数据库model，用于读写contract相关数据
 
@@ -109,10 +129,14 @@ class DbContractData(Model):
         database = get_db_config()
         indexes: tuple = ((("symbol", "date"), True),)
 
-DbBarData._meta.add_field('settle_price', DoubleField())
+
+DbBarData._meta.add_field("settle_price", DoubleField())
+
 
 class my_sql_database(MysqlDatabase):
-    def __init__(self,):
+    def __init__(
+        self,
+    ):
         self.db = get_db_config()
         self.db.connect()
         tables = [DbBarData, DbTickData, DbContractData, DbBarOverview, DbTickOverview]
@@ -120,23 +144,17 @@ class my_sql_database(MysqlDatabase):
         self.db.create_tables(new_tables)
 
     def load_bar_data(
-        self,
-        symbol: str,
-        exchange: Exchange,
-        interval: Interval,
-        start: datetime,
-        end: datetime
+        self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime
     ) -> list[BarDataV2]:
-        """"""
-        s: ModelSelect = (
-            DbBarData.select().where(
-                (DbBarData.symbol == symbol)
-                & (DbBarData.exchange == exchange.value)
-                & (DbBarData.interval == interval.value)
-                & (DbBarData.datetime >= start)
-                & (DbBarData.datetime <= end)
-            ).order_by(DbBarData.datetime)
+        conditions = (
+            (DbBarData.symbol == symbol)
+            & (DbBarData.interval == interval.value)
+            & (DbBarData.datetime >= start)
+            & (DbBarData.datetime <= end)
         )
+        if exchange is not None:
+            conditions = conditions & (DbBarData.exchange == exchange.value)
+        s: ModelSelect = DbBarData.select().where(conditions).order_by(DbBarData.datetime)
 
         bars: list[BarData] = []
         for db_bar in s:
@@ -153,16 +171,13 @@ class my_sql_database(MysqlDatabase):
                 low_price=db_bar.low_price,
                 close_price=db_bar.close_price,
                 settle_price=db_bar.settle_price,
-                gateway_name="DB"
+                gateway_name="DB",
             )
             bars.append(bar)
 
         return bars
 
-    def save_contr_info(self,contr_data: list[ContractData]):
-        contr_info: ContractData = contr_data[0]
-        symbol: str = contr_info.symbol
-        exchange: Exchange = contr_info.exchange
+    def save_contr_info(self, contr_data: list[ContractData]):
         data: list = []
 
         for contr in contr_data:
@@ -172,42 +187,44 @@ class my_sql_database(MysqlDatabase):
             data.append(d)
 
         with self.db.atomic():
-            for c in chunked(data,50):
+            for c in chunked(data, 50):
                 DbContractData.insert_many(c).on_conflict_replace().execute()
 
     def load_contr_info(self, symbol: str, start, end):
         s: ModelSelect = (
-                DbContractData.select().where(
-                    (DbContractData.symbol == symbol)
-                    & (DbContractData.date >= start)
-                    & (DbContractData.date <= end)
-                    ).order_by(DbContractData.date)
-                )
+            DbContractData.select()
+            .where(
+                (DbContractData.symbol == symbol)
+                & (DbContractData.date >= start)
+                & (DbContractData.date <= end)
+            )
+            .order_by(DbContractData.date)
+        )
 
         contracts: list[ContractData] = []
         for contract in s:
             contr: ContractData = ContractData(
-                    symbol = contract.symbol,
-                    exchange = Exchange(contract.exchange),
-                    date = datetime.fromtimestamp(contract.date.timestamp(),DB_TZ),
-                    times = contract.times,
-                    fee = contract.fee,
-                    fee_rate = contract.fee_rate,
-                    today_offset_fee = contract.today_offset_fee,
-                    long_margin = contract.long_margin,
-                    short_margin = contract.short_margin,
-                    settle = contract.settle,
-                    gateway_name = "DB"
-                    )
+                symbol=contract.symbol,
+                exchange=Exchange(contract.exchange),
+                date=datetime.fromtimestamp(contract.date.timestamp(), DB_TZ),
+                times=contract.times,
+                fee=contract.fee,
+                fee_rate=contract.fee_rate,
+                today_offset_fee=contract.today_offset_fee,
+                long_margin=contract.long_margin,
+                short_margin=contract.short_margin,
+                settle=contract.settle,
+                gateway_name="DB",
+            )
             contracts.append(contr)
         return contracts
 
-    
+
 # tushare_datafeed的api适配
 
 
 class ts_df(Datafeed):
-    def __init__(self,ts_pwd,ts_usr='token'):
+    def __init__(self, ts_pwd, ts_usr="token"):
         super().__init__()
         self.username = ts_usr
         self.password = ts_pwd
@@ -215,16 +232,20 @@ class ts_df(Datafeed):
     def init(self, output=print):
         super().init(output)
         # Interval不支持Monthly
-        self.apis = dict(zip([Interval.WEEKLY, Interval.DAILY, Interval.HOUR, Interval.MINUTE], 
-                             [
-                                partial(self.pro.fut_weekly_monthly,freq='week'), 
-                                self.pro.fut_daily,
-                                partial(self.pro.ft_mins, freq = '60min'),
-                                partial(self.pro.ft_mins, freq = '1min')
-                            ]))
+        self.apis = dict(
+            zip(
+                [Interval.WEEKLY, Interval.DAILY, Interval.HOUR, Interval.MINUTE],
+                [
+                    partial(self.pro.fut_weekly_monthly, freq="week"),
+                    self.pro.fut_daily,
+                    partial(self.pro.ft_mins, freq="60min"),
+                    partial(self.pro.ft_mins, freq="1min"),
+                ],
+            )
+        )
 
     # query_bar_data加一个字段settle_price
-    def query_bar_history(self, req, output = print) -> list[BarDataV2]:
+    def query_bar_history(self, req, output=print) -> list[BarDataV2]:
         """查询k线数据"""
         if not self.inited:
             self.init(output)
@@ -232,15 +253,19 @@ class ts_df(Datafeed):
         start: datetime = req.start.strftime("%Y-%m-%d %H:%M:%S")
         end: datetime = req.end.strftime("%Y-%m-%d %H:%M:%S")
 
-        ts_symbol: str  = to_ts_symbol(req.symbol, req.exchange)
+        ts_symbol: str = to_ts_symbol(req.symbol, req.exchange)
         if not ts_symbol:
             return None
 
         adjustment: timedelta = INTERVAL_ADJUSTMENT_MAP.get(req.interval, 0)
-        api_inputs = {'ts_code': ts_symbol, 'start_date': start, 'end_date': end, }
-        if req.interval.value == 'd' or req.interval.value == 'w':
+        api_inputs = {
+            "ts_code": ts_symbol,
+            "start_date": start,
+            "end_date": end,
+        }
+        if req.interval.value == "d" or req.interval.value == "w":
             api_inputs.update(exchange=req.exchange.value)
-            
+
         try:
             d1: DataFrame = self.apis[req.interval](**api_inputs)
         except OSError as ex:
@@ -251,7 +276,6 @@ class ts_df(Datafeed):
         while True:
             if len(d1) != 8000:
                 break
-            tmp_end: str = d1["trade_time"].values[-1]
 
             d1 = self.apis[req.interval](**api_inputs)
             df = pd.concat([df[:-1], d1])
@@ -264,7 +288,7 @@ class ts_df(Datafeed):
         df.fillna(0, inplace=True)
 
         if df is not None:
-            for _ix, row in df.iterrows():
+            for _, row in df.iterrows():
                 if row["open"] is None:
                     continue
 
@@ -279,7 +303,7 @@ class ts_df(Datafeed):
 
                 turnover = row.get("amount", 0)
                 open_interest = row.get("oi", 0)
-                settle_price = row.get("settle",0) # 日内没有结算价数据
+                settle_price = row.get("settle", 0)  # 日内没有结算价数据
 
                 bar: BarDataV2 = BarDataV2(
                     symbol=req.symbol,
@@ -294,7 +318,7 @@ class ts_df(Datafeed):
                     volume=row["vol"],
                     turnover=turnover,
                     open_interest=open_interest,
-                    gateway_name="TS"
+                    gateway_name="TS",
                 )
 
                 bar_dict[dt] = bar
@@ -303,8 +327,8 @@ class ts_df(Datafeed):
             data.append(bar_dict[i])
 
         return data
-    
-    def query_contract_data(self, req, output = print) -> list[ContractData] :
+
+    def query_contract_data(self, req, output=print) -> list[ContractData]:
         """查每日结算数据"""
         if not self.inited:
             self.init(output)
@@ -314,7 +338,7 @@ class ts_df(Datafeed):
         start: str = req.start.strftime("%Y%m%d")
         end: str = req.end.strftime("%Y%m%d")
 
-        ts_symbol: str  = to_ts_symbol(symbol, exchange)
+        ts_symbol: str = to_ts_symbol(symbol, exchange)
         if not ts_symbol:
             return None
 
@@ -323,15 +347,19 @@ class ts_df(Datafeed):
                 ts_code=ts_symbol,
                 start_date=start,
                 end_date=end,
-                fields = 'trade_date,trading_fee,trading_fee_rate,long_margin_rate,short_margin_rate,offset_today_fee,settle'
+                fields="trade_date,trading_fee,trading_fee_rate,long_margin_rate,short_margin_rate,offset_today_fee,settle",
             )
             if len(df) == 0:
-                raise ValueError(f"未成功从tushare数据库中取得{ts_symbol}在{start}~{end}时期的合约数据，数据条数为0")
+                raise ValueError(
+                    f"未成功从tushare数据库中取得{ts_symbol}在{start}~{end}时期的合约数据，数据条数为0"
+                )
             # 取出某个交易所（某个品种）所有合约的报价倍数
-            trade_code = ts_symbol.split('.')[0]
+            trade_code = ts_symbol.split(".")[0]
             fut_code = "".join([x for x in trade_code if x.isalpha()])
-            times_df = self.pro.fut_basic(exchange=exchange.value, fut_code=fut_code, fields='ts_code,per_unit').set_index('ts_code')
-            times = times_df['per_unit'].loc[ts_symbol].item()
+            times_df = self.pro.fut_basic(
+                exchange=exchange.value, fut_code=fut_code, fields="ts_code,per_unit"
+            ).set_index("ts_code")
+            times = times_df["per_unit"].loc[ts_symbol].item()
         except OSError as ex:
             output(f"发生输入/输出错误：{ex.strerror}")
             return []
@@ -345,7 +373,6 @@ class ts_df(Datafeed):
 
         if df is not None:
             for _ix, row in df.iterrows():
-
                 dt_str: str = row["trade_date"]
                 dt: datetime = datetime.strptime(dt_str, "%Y%m%d")
 
@@ -362,7 +389,7 @@ class ts_df(Datafeed):
                     long_margin=row["long_margin_rate"],
                     short_margin=row["short_margin_rate"],
                     settle=row["settle"],
-                    gateway_name="TS"
+                    gateway_name="TS",
                 )
 
                 contr_dict[dt] = contr_info
@@ -372,5 +399,3 @@ class ts_df(Datafeed):
             data.append(contr_dict[i])
 
         return data
-
-

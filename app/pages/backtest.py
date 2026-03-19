@@ -1,15 +1,19 @@
-import pandas as pd
 from datetime import datetime
 
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import pandas as pd
+import streamlit as st
 
-from utils import st,get_strategy_names,DataQuery,get_signal,trade_simulation, TradeOrder, acc_stats,get_available_contracts,get_available_times
+from app.utils import get_available_contracts, get_available_times, get_strategy_names
+from core.account_statistics import acc_stats
+from core.simulation import TradeOrder, trade_simulation
+from get_data import DataQuery
+from signals import get_signal
 
 st.title("回测参数")
 code = st.selectbox("选择合约代码", get_available_contracts())
 trade_strategy = st.selectbox("选择交易策略", get_strategy_names())
+
+
 def get_st_configs() -> dict:
     # 根据策略名获取配置
     # 下拉列表选择trade_strategy
@@ -18,7 +22,7 @@ def get_st_configs() -> dict:
         lag = st.number_input("滞后期", min_value=1, value=5)
     elif trade_strategy == "dma":
         short = st.number_input("短期均线周期", min_value=1, value=5)
-        long = st.number_input("长期均线周期", min_value=short+1, value=20)
+        long = st.number_input("长期均线周期", min_value=short + 1, value=20)
     elif trade_strategy == "mr":
         lag = st.number_input("滞后期", min_value=1, value=5)
         threshold = st.number_input("阈值", min_value=0.0, value=1.0)
@@ -26,7 +30,9 @@ def get_st_configs() -> dict:
         ubr = st.number_input("上轨比例", min_value=0.0, max_value=1.0, value=0.75)
         lbr = st.number_input("下轨比例", min_value=0.0, max_value=1.0, value=0.25)
     elif trade_strategy == "abs":
-        level = st.number_input("水平线", ) # 没有手动输入的话，没有默认值
+        level = st.number_input(
+            "水平线",
+        )  # 没有手动输入的话，没有默认值
     elif trade_strategy == "mom":
         lag = st.number_input("滞后期", min_value=1, value=5)
     # 信号产生列名和交易价格列名
@@ -34,16 +40,17 @@ def get_st_configs() -> dict:
     # 根据上述变量名和值，生成一个字典
     config = {
         "source": source,
-        "lag": lag if 'lag' in locals() else None,
-        "short": short if 'short' in locals() else None,
-        "long": long if 'long' in locals() else None,
-        "threshold": threshold if 'threshold' in locals() else None,
-        "ubr": ubr if 'ubr' in locals() else None,
-        "lbr": lbr if 'lbr' in locals() else None,
-        "level": level if 'level' in locals() else None
+        "lag": lag if "lag" in locals() else None,
+        "short": short if "short" in locals() else None,
+        "long": long if "long" in locals() else None,
+        "threshold": threshold if "threshold" in locals() else None,
+        "ubr": ubr if "ubr" in locals() else None,
+        "lbr": lbr if "lbr" in locals() else None,
+        "level": level if "level" in locals() else None,
     }
 
     return config
+
 
 init_fund = st.number_input("初始资金", value=100000.0)
 margin_call = st.number_input("保证金追保线（默认为初始资金*0.1）", value=init_fund * 0.1)
@@ -59,9 +66,18 @@ target = st.selectbox("交易的价格", ["open", "high", "low", "close", "settl
 
 # start_time不准超过early
 early, late = get_available_times(code)
+if early is None or late is None:
+    st.warning("该合约暂无可用时间区间，请先写入数据")
+    st.stop()
 # streamlit设置以日历的方式选择年月日和时分秒
-start_date, start_time = st.date_input("开始日期", value=pd.to_datetime(early)), st.time_input("开始时刻", value=datetime.strptime("00:00:00", "%H:%M:%S").time())
-end_date, end_time = st.date_input("结束时间", value=pd.to_datetime(late)), st.time_input("结束时刻", value=datetime.strptime("23:59:59", "%H:%M:%S").time())
+start_date, start_time = (
+    st.date_input("开始日期", value=pd.to_datetime(early)),
+    st.time_input("开始时刻", value=datetime.strptime("00:00:00", "%H:%M:%S").time()),
+)
+end_date, end_time = (
+    st.date_input("结束时间", value=pd.to_datetime(late)),
+    st.time_input("结束时刻", value=datetime.strptime("23:59:59", "%H:%M:%S").time()),
+)
 start, end = datetime.combine(start_date, start_time), datetime.combine(end_date, end_time)
 
 # 交易频率
@@ -72,25 +88,29 @@ interval = st.selectbox("交易频率", ["日线", "分钟", "周", "小时"])
 config = get_st_configs()
 
 if st.button("开始回测"):
-    test_account = acc_stats('demo',init_fund,log_dir,shares)
-    data_query = DataQuery(code,start,end,interval,target=target)
+    test_account = acc_stats(init_fund, shares, usr_name="demo", log_dir=log_dir)
+    data_query = DataQuery(code, start, end, interval, target=target)
     # todo: 未来需要支持.csv格式文件拖拽上传后处理成统一信号格式
-    
-    signal = get_signal(trade_strategy, config, data_query,)
+
+    signal = get_signal(
+        trade_strategy,
+        config,
+        data_query,
+    )
     simu = trade_simulation(test_account)
     trade_order = TradeOrder(signal, data_query.target_price, code, interval, stop_loss, shares)
-    simu.calc_performances(start, end, trade_order, margin_call, data_query)
+    simu.calc_performances(trade_order, margin_call, data_query)
 
     # 展示回测结果
     # 画一个折线图展示每日权益
     # 折线图起个名字
     st.subheader("每日权益")
-    st.line_chart(simu.pnl['balance'], use_container_width=True)
+    st.line_chart(simu.pnl["balance"], use_container_width=True)
     st.subheader("每日浮动盈亏")
     # 画一个柱状图显示每日盈亏，要显示图的名字
-    st.bar_chart(simu.pnl['daily_profit'], use_container_width=True)
+    st.bar_chart(simu.pnl["daily_profit"], use_container_width=True)
     # 画一个表格展示回测统计结果
-    perf_df = pd.DataFrame.from_dict(simu.perf_dict, orient='index', columns=['值'])
+    perf_df = pd.DataFrame.from_dict(simu.perf_dict, orient="index", columns=["值"])
     st.table(perf_df)
 
     st.success("回测完成")

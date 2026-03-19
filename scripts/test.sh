@@ -14,17 +14,17 @@ open_col=open
 close_col=close
 strategy=dma
 
-log_path=logs/${usr_name}/${open_code}_${strategy}
-mkdir $log_path
+log_path=logs/${usr_name}_${open_code}_${strategy}
 
-python backtest_exec.py \
+python3 -m scripts.backtest_exec \
 	--usr_name ${usr_name} \
 	--init_fund $init_fund \
 	--code $open_code \
 	--shares $n_shares \
 	--start_time 2018-12-15 \
 	--source $close_col \
+	--target $close_col \
 	--end_time 2019-06-16 \
 	--log_dir $log_path \
 	--trade_strategy ${strategy} \
-	--stop_loss float 0.1 None \
+	--stop_loss 0.1 \

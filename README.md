@@ -15,20 +15,13 @@
 
 ---
 
-##  支持策略（详见 `signals.py`）
+## 项目结构
 
-| 策略名称 | 参数说明 |
-|----------|----------|
-| ma       | 滞后期：`--lag` |
-| dma      | 短均线、长均线：`--short`, `--long` |
-| mom      | 动量滞后期：`--lag` |
-| qtl      | 分位区间：`--lbr`, `--ubr` |
-| abs      | 固定阈值：`--level` |
-| mr       | 均值回归滞后期、标准差阈值：`--lag`, `--threshold` |
 
 ---
 
-## 设置 MySQL 数据库
+##  快速开始
+### 设置 MySQL 数据库
 
 ```sql
 CREATE DATABASE your_database;
@@ -48,25 +41,42 @@ FLUSH PRIVILEGES;
   "tushare_token": "your_tushare_token"
 }
 ```
+### 环境配置
+请使用uv快速安装全部依赖库，并验证本地SQL数据读写
+```bash
+uv run python -m pytest tests/
+```
+基于上期所CU1911合约，在2018.12-2019.6期间日度数据，快速回测双均线策略表现
+```bash
+uv run bash scripts/test.sh
+```
 
----
-
-##  快速开始
-
-### 终端执行
-
+### 可视化选项
+终端执行如下命令，
 ```bash
 streamlit run app/HomePage.py
 ```
 
-### 写入本地MySQL
+#### 写入本地MySQL
 https://github.com/user-attachments/assets/f7a9627a-bb17-4336-8acd-0cdf18773ce8
 
-##  回测结果可视化
-
-
+####  回测结果可视化
 https://github.com/user-attachments/assets/bc1632a8-0c85-4481-847b-8b63528709c3
 
+
+---
+
+
+##  支持策略（详见 `signals.py`）
+
+| 策略名称 | 参数说明 |
+|----------|----------|
+| ma       | 滞后期：`--lag` |
+| dma      | 短均线、长均线：`--short`, `--long` |
+| mom      | 动量滞后期：`--lag` |
+| qtl      | 分位区间：`--lbr`, `--ubr` |
+| abs      | 固定阈值：`--level` |
+| mr       | 均值回归滞后期、标准差阈值：`--lag`, `--threshold` |
 
 ---
 
@@ -81,5 +91,5 @@ https://github.com/user-attachments/assets/bc1632a8-0c85-4481-847b-8b63528709c3
 
 ##  参与贡献
 
-业余选手造的轮子，欢迎 Issue / PR / Star！  
+业余选手造的轮子，欢迎 Issue / PR / Star！
  [项目地址](https://github.com/tina-wen/quant_trade)
