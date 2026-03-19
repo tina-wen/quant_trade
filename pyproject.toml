@@ -1,0 +1,47 @@
+[project]
+name = "quant-trade"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pyside6==6.7.3",
+    "holidays",
+    "streamlit",
+    "tushare",
+    "vnpy<4.3.0",
+    "vnpy-mysql>=1.1.1",
+    "vnpy-tushare>=1.4.21.0",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.2.0",
+    "pytest>=9.0.2",
+    "ruff>=0.12.8",
+]
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+
+[tool.setuptools.packages.find]
+include = ["*"]  # 包含所有包
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers"]
+markers = [
+    "integration: integration tests that touch external systems like MySQL or Tushare",
+    "slow: slow tests that are not needed for fast local feedback",
+]

@@ -1,0 +1,55 @@
+name: tests-integration
+
+on:
+  workflow_dispatch:
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.TUSHARE_TOKEN != '' && secrets.MYSQL_DATABASE != '' && secrets.MYSQL_USER != '' && secrets.MYSQL_PASSWORD != '' }}
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USER: ${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Prepare database config
+        run: |
+          cat > config/database_config.json << 'EOF'
+          {
+            "db_name": "${{ secrets.MYSQL_DATABASE }}",
+            "db_user": "${{ secrets.MYSQL_USER }}",
+            "db_pwd": "${{ secrets.MYSQL_PASSWORD }}",
+            "db_host": "127.0.0.1",
+            "tushare_token": "${{ secrets.TUSHARE_TOKEN }}"
+          }
+          EOF
+
+      - name: Run integration pytest
+        run: uv run python -m pytest tests/ -q -m "integration"
