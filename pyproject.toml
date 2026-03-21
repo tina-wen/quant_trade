@@ -6,19 +6,19 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "pyside6==6.7.3",
-    "holidays",
-    "streamlit",
-    "tushare",
-    "vnpy<4.3.0",
-    "vnpy-mysql>=1.1.1",
-    "vnpy-tushare>=1.4.21.0",
+    "holidays==0.92",
+    "streamlit==1.55.0",
+    "tushare==1.4.25",
+    "vnpy==3.9.4",
+    "vnpy-mysql==1.1.1",
+    "vnpy-tushare==1.4.21.0",
 ]
 
 [dependency-groups]
 dev = [
-    "pre-commit>=4.2.0",
-    "pytest>=9.0.2",
-    "ruff>=0.12.8",
+    "pre-commit==4.5.1",
+    "pytest==9.0.2",
+    "ruff==0.15.6",
 ]
 
 [[tool.uv.index]]
