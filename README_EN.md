@@ -121,5 +121,5 @@ Detailed logs at `./logs/{account}/{symbol_strategy_time}.log`
 
 ## Contributing
 
-This is a personal weekend project — feel free to submit issues, PRs, or give it a ⭐.  
+This is a personal weekend project — feel free to submit issues, PRs, or give it a ⭐.
  [GitHub Project](https://github.com/tina-wen/quant_trade)
