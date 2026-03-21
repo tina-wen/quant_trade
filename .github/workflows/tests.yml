@@ -27,4 +27,4 @@ jobs:
         run: uv sync --group dev
 
       - name: Run fast pytest (exclude integration/slow)
-        run: uv run python -m pytest tests/ -q -m "not integration and not slow"
+        run: uv run python -m pytest tests/ -q -m "not integration and not slow" || test $? -eq 5
