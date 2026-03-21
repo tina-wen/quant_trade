@@ -1,9 +1,10 @@
 import streamlit as st
+
 st.title("期货量化回测平台")
 # 页面导航
 st.sidebar.title("导航")
 st.sidebar.markdown("""
-- [数据写入](./data_writer)       
+- [数据写入](./data_writer)
 - [策略回测](./backtest)
 """)
 # 页面内容：分点列举目前支持功能
@@ -30,4 +31,6 @@ st.markdown("""
 - 分钟/小时(60m)数据，非氪金账号不能取，实测10000积分不能用
 """)
 
-st.write("需求和建议请在开源项目[GitHub](https://github.com/tina-wen/quant_trade/tree/master#)上提issue，欢迎star和fork！")
+st.write(
+    "需求和建议请在开源项目[GitHub](https://github.com/tina-wen/quant_trade/tree/master#)上提issue，欢迎star和fork！"
+)
