@@ -3,15 +3,19 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+from app.perf import init_page_profiler
 from app.utils import get_available_contracts, get_available_times, get_strategy_names
 from core.account_statistics import acc_stats
 from core.simulation import TradeOrder, trade_simulation
-from get_data import DataQuery
-from signals import get_signal
+
+profiler = init_page_profiler("backtest")
 
 st.title("回测参数")
-code = st.selectbox("选择合约代码", get_available_contracts())
+available_contracts = get_available_contracts()
+profiler.mark("读取合约列表")
+code = st.selectbox("选择合约代码", available_contracts)
 trade_strategy = st.selectbox("选择交易策略", get_strategy_names())
+profiler.mark("基础选择控件")
 
 
 def get_st_configs() -> dict:
@@ -66,6 +70,7 @@ target = st.selectbox("交易的价格", ["open", "high", "low", "close", "settl
 
 # start_time不准超过early
 early, late = get_available_times(code)
+profiler.mark("读取可用时间区间")
 if early is None or late is None:
     st.warning("该合约暂无可用时间区间，请先写入数据")
     st.stop()
@@ -82,12 +87,17 @@ start, end = datetime.combine(start_date, start_time), datetime.combine(end_date
 
 # 交易频率
 interval = st.selectbox("交易频率", ["日线", "分钟", "周", "小时"])
+profiler.mark("参数区渲染")
 
 # 回测
 ### 根据收盘价生成的信号（当日3点后出），最早只能用开盘价交易
 config = get_st_configs()
 
 if st.button("开始回测"):
+    profiler.mark("开始回测")
+    from get_data import DataQuery
+    from signals import get_signal
+
     test_account = acc_stats(init_fund, shares, usr_name="demo", log_dir=log_dir)
     data_query = DataQuery(code, start, end, interval, target=target)
     # todo: 未来需要支持.csv格式文件拖拽上传后处理成统一信号格式
@@ -100,6 +110,7 @@ if st.button("开始回测"):
     simu = trade_simulation(test_account)
     trade_order = TradeOrder(signal, data_query.target_price, code, interval, stop_loss, shares)
     simu.calc_performances(trade_order, margin_call, data_query)
+    profiler.mark("回测计算完成")
 
     # 展示回测结果
     # 画一个折线图展示每日权益
@@ -114,3 +125,6 @@ if st.button("开始回测"):
     st.table(perf_df)
 
     st.success("回测完成")
+    profiler.mark("结果渲染完成")
+
+profiler.render()
