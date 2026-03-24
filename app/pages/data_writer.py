@@ -38,8 +38,9 @@ code = st.text_input(
 )
 profiler.mark("基础输入控件")
 
-variety = _extract_variety(code)
-inferred_exchange_code = _normalize_exchange_code(EXCHANGE_MAP.get(variety))
+has_code = bool(code.strip())
+variety = _extract_variety(code) if has_code else ""
+inferred_exchange_code = _normalize_exchange_code(EXCHANGE_MAP.get(variety)) if has_code else None
 
 start_date = st.date_input(
     "开始日期",
@@ -49,11 +50,12 @@ end_date = st.date_input(
 )
 profiler.mark("日期控件")
 
-if inferred_exchange_code:
+if has_code and inferred_exchange_code:
     st.info(f"根据合约代码识别到品种 {variety}，交易所：{inferred_exchange_code}")
     exchange = normalize_exchange(code, inferred_exchange_code)
 else:
-    st.warning("未在 exchange_map.json 中匹配到该品种，请手动选择交易所")
+    if has_code:
+        st.warning("未在 exchange_map.json 中匹配到该品种，请手动选择交易所")
     manual_exchange_options = ["SHFE", "DCE", "CZCE", "INE", "CFFEX", "GFEX"]
     mapped_exchange_options = [
         _normalize_exchange_code(x) for x in EXCHANGE_MAP.values() if _normalize_exchange_code(x)
