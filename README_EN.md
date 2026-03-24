@@ -1,54 +1,35 @@
-#  Quant Trade: A Flexible Futures Backtesting Framework
+# Quant Trade: A Practical Futures Backtesting Framework
 
-A modular and strategy-agnostic backtesting system for Chinese futures. With just a Tushare token and MySQL database, you can start backtesting your strategy in minutes.
->  中文版请见：[README.md](./README.md)
+Quant Trade is a lightweight and extensible framework for futures strategy research.
+It connects Tushare + MySQL + a modular backtesting engine so you can move from raw data to performance metrics quickly.
 
+Chinese version: [README.md](./README.md)
 
----
+## Highlights
 
-##  Highlights
+- Decoupled architecture: strategy generation and trade simulation are separated.
+- Built-in strategies: MA, DMA, Momentum, Quantile, Absolute Threshold, Mean Reversion.
+- Data pipeline included: import from CSV or Tushare into local MySQL.
+- Streamlit UI: convenient pages for data writing and backtest visualization.
+- Performance analytics: annual return, Sharpe ratio, drawdown, win rate, and PnL ratio.
 
--  **Strategy/Backtest Separation**: Cleanly decouples strategy generation from execution logic.
--  **Support for Fundamental Data**: Any time series can be used to generate trading signals.
--  **Local MySQL Management**: Structured, fast, and scalable data storage.
--  **Complete Trade Logs**: Every trade is recorded for transparency and debugging.
--  **Performance Metrics**: Annual return, Sharpe ratio, drawdown, win rate, and PnL ratio.
+## Project Structure
 
----
-
-##  Built-in Strategies (`signals.py`)
-
-| Strategy | Parameters |
-|----------|------------|
-| `ma`     | `--lag` |
-| `dma`    | `--short`, `--long` |
-| `mom`    | `--lag` |
-| `qtl`    | `--lbr`, `--ubr` |
-| `abs`    | `--level` |
-| `mr`     | `--lag`, `--threshold` |
-
----
-
-##  Installation & Configuration
-
-### 1. Install Dependencies
-
-It is recommended **not to install `vnpy` via pip**, but build it from source:
-
-```bash
-git clone https://github.com/vnpy/vnpy.git
-# Edit install.sh: remove ta-lib installation
-# Edit pyproject.toml: remove ta-lib dependency
-bash install.sh
+```text
+quant_trade/
+|- app/                 # Streamlit pages
+|- config/              # Database and exchange mapping config
+|- core/                # Simulation engine and account statistics
+|- scripts/             # CLI scripts and examples
+|- tests/               # Unit/integration tests
+|- get_data.py          # Data query entry
+|- signals.py           # Strategy signal generation
+`- vnpy_adaptor.py      # Database adapter
 ```
 
-Install TA-Lib:
+## Quick Start
 
-```bash
-conda install -c conda-forge ta-lib
-```
-
-### 2. Set up MySQL
+### 1. Configure MySQL
 
 ```sql
 CREATE DATABASE your_database;
@@ -57,7 +38,13 @@ GRANT ALL PRIVILEGES ON your_database.* TO 'your_user'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-Configuration file (`quant_trade/database_config.json`):
+First copy the example config:
+
+```bash
+cp config/database_config.example.json config/database_config.json
+```
+
+Then edit your local config [config/database_config.json](./config/database_config.json):
 
 ```json
 {
@@ -69,57 +56,67 @@ Configuration file (`quant_trade/database_config.json`):
 }
 ```
 
----
-
-##  Quickstart
-
-### Download and Save Bar Data
-
-```python
-from ts_download import save_csv_bar, save_ts_bar, save_ts_contr
-from vnpy.trader.constant import Exchange, Interval
-
-save_csv_bar("datasets/price.csv", "Unnamed: 0", "test", Exchange.DCE, Interval.DAILY)
-save_ts_contr("CU1911", Exchange.SHFE, datetime(2018,10,1), datetime(2019,12,1))
-save_ts_bar("CU1911", Exchange.SHFE, datetime(2018,10,1), datetime(2019,12,1), Interval.DAILY)
-```
-
-### Verify Data in MySQL
-
-```sql
-SHOW TABLES;
-SELECT * FROM dbbardata WHERE symbol = 'CU1911';
-SELECT * FROM dbcontractdata WHERE symbol = 'CU1911';
-```
-
-### Run Backtest
+### 2. Install Dependencies with uv
 
 ```bash
-python backtest_exec.py   --code CU1911   --start_time 2018-12-15   --end_time 2019-06-16   --source close   --trade_strategy dma   --log_dir ./log/demo/CU1911_dma
+uv sync
+uv pip install -e .
 ```
 
----
+Note: editable install is recommended so CLI scripts, Streamlit pages, and top-level modules share a consistent import path.
 
-##  Example Output
+### 3. Run Tests
 
-```text
-Demo annualized return: -4.69%, Sharpe: -3.08, Max Drawdown: 3.54%, Win rate: 33.33%, PnL ratio: 0.56
+```bash
+uv run pytest tests/
 ```
 
-Detailed logs at `./logs/{account}/{symbol_strategy_time}.log`
+### 4. Run CLI Backtest Example
 
----
+Linux/macOS:
 
-##  Roadmap
+```bash
+uv run bash scripts/test.sh
+```
+
+Windows:
+
+```bat
+uv run scripts/test.bat
+```
+
+### 5. Launch Streamlit UI
+
+```bash
+uv run streamlit run app/HomePage.py
+```
+
+## Built-in Strategies
+
+See [signals.py](./signals.py).
+
+| Strategy | Parameters |
+|----------|------------|
+| `ma` | `--lag` |
+| `dma` | `--short`, `--long` |
+| `mom` | `--lag` |
+| `qtl` | `--lbr`, `--ubr` |
+| `abs` | `--level` |
+| `mr` | `--lag`, `--threshold` |
+
+## Demo
+
+- Data writing page: https://github.com/user-attachments/assets/f7a9627a-bb17-4336-8acd-0cdf18773ce8
+- Backtest visualization page: https://github.com/user-attachments/assets/bc1632a8-0c85-4481-847b-8b63528709c3
+
+## Roadmap
 
 - [ ] Multi-symbol portfolio backtesting
-- [ ] Strategy visualization tools
 - [ ] Automatic factor mining
-- [ ] Integration with published research
-
----
+- [ ] Research-paper strategy templates
 
 ## Contributing
 
-This is a personal weekend project — feel free to submit issues, PRs, or give it a ⭐.
- [GitHub Project](https://github.com/tina-wen/quant_trade)
+Issues and PRs are welcome.
+
+GitHub: https://github.com/tina-wen/quant_trade

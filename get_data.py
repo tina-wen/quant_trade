@@ -1,4 +1,5 @@
 from datetime import datetime
+from functools import lru_cache
 from typing import Dict
 
 import pandas as pd
@@ -15,6 +16,26 @@ freq_dict = {
     "小时": Interval.HOUR,
 }
 Ex_dict = {"SHFE": Exchange.SHFE, "INE": Exchange.INE, "DCE": Exchange.DCE, "CZCE": Exchange.CZCE}
+EXCHANGE_ALIAS_MAP = {
+    "ZCE": "CZCE",
+}
+
+
+def _to_exchange(exchange_code: str) -> Exchange:
+    normalized_code = EXCHANGE_ALIAS_MAP.get(exchange_code.upper(), exchange_code.upper())
+    try:
+        return Exchange(normalized_code)
+    except ValueError:
+        try:
+            return Exchange[normalized_code]
+        except KeyError as exc:
+            raise ValueError(f"不支持的交易所: {exchange_code}") from exc
+
+
+@lru_cache(maxsize=1)
+def get_db_query():
+    # Reuse a single database client in the process to avoid reconnect cost on each rerun.
+    return my_sql_database()
 
 
 def normalize_exchange(code: str, exchange: Exchange | str | None = None) -> Exchange | None:
@@ -24,19 +45,13 @@ def normalize_exchange(code: str, exchange: Exchange | str | None = None) -> Exc
         return exchange
 
     if isinstance(exchange, str):
-        try:
-            return Exchange(exchange)
-        except ValueError:
-            try:
-                return Exchange[exchange]
-            except KeyError as exc:
-                raise ValueError(f"不支持的交易所: {exchange}") from exc
+        return _to_exchange(exchange)
 
     from config.loader import EXCHANGE_MAP
 
     inferred_exchange = EXCHANGE_MAP.get("".join(c for c in code if c.isalpha()).upper(), None)
     if isinstance(inferred_exchange, str):
-        return Exchange(inferred_exchange)
+        return _to_exchange(inferred_exchange)
     return inferred_exchange
 
 
@@ -54,7 +69,7 @@ class Cache:
 
 
 def get_overview_df():
-    data_query = my_sql_database()
+    data_query = get_db_query()
     list_bar_overview = [x.__dict__["__data__"] for x in data_query.get_bar_overview()]
     overview_df = pd.DataFrame.from_records(list_bar_overview)
     return overview_df
@@ -64,7 +79,7 @@ def get_overview_df():
 def get_contract_info(code: str, trade_date: datetime, key: str, price: float = None):
     code = code.split(".")[0]
     trade_date = trade_date.replace(hour=0, minute=0, second=0, microsecond=0)
-    data_query = my_sql_database()
+    data_query = get_db_query()
     contr = data_query.load_contr_info(symbol=code, start=trade_date, end=trade_date)
     if len(contr) == 0:
         raise KeyError(
@@ -101,7 +116,7 @@ def get_price_by_code(
     exchange = normalize_exchange(code, exchange)
     if isinstance(interval, str):
         interval = freq_dict.get(interval, Interval.DAILY)
-    data_query = my_sql_database()
+    data_query = get_db_query()
     list_bar = data_query.load_bar_data(
         symbol=code, exchange=exchange, start=start_time, end=end_time, interval=interval
     )

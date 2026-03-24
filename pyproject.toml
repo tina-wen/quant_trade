@@ -24,8 +24,15 @@ dev = [
 [[tool.uv.index]]
 url = "https://mirrors.aliyun.com/pypi/simple/"
 
+[tool.setuptools]
+py-modules = ["get_data", "signals", "st_adapt", "vnpy_adaptor"]
+
 [tool.setuptools.packages.find]
 include = ["*"]  # 包含所有包
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
 
 [tool.ruff]
 target-version = "py310"
