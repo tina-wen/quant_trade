@@ -31,7 +31,7 @@ py-modules = ["get_data", "signals", "st_adapt", "vnpy_adaptor"]
 include = ["*"]  # 包含所有包
 
 [build-system]
-requires = ["setuptools>=42"]
+requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.ruff]
