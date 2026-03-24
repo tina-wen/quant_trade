@@ -16,6 +16,20 @@ freq_dict = {
     "小时": Interval.HOUR,
 }
 Ex_dict = {"SHFE": Exchange.SHFE, "INE": Exchange.INE, "DCE": Exchange.DCE, "CZCE": Exchange.CZCE}
+EXCHANGE_ALIAS_MAP = {
+    "ZCE": "CZCE",
+}
+
+
+def _to_exchange(exchange_code: str) -> Exchange:
+    normalized_code = EXCHANGE_ALIAS_MAP.get(exchange_code.upper(), exchange_code.upper())
+    try:
+        return Exchange(normalized_code)
+    except ValueError:
+        try:
+            return Exchange[normalized_code]
+        except KeyError as exc:
+            raise ValueError(f"不支持的交易所: {exchange_code}") from exc
 
 
 @lru_cache(maxsize=1)
@@ -31,19 +45,13 @@ def normalize_exchange(code: str, exchange: Exchange | str | None = None) -> Exc
         return exchange
 
     if isinstance(exchange, str):
-        try:
-            return Exchange(exchange)
-        except ValueError:
-            try:
-                return Exchange[exchange]
-            except KeyError as exc:
-                raise ValueError(f"不支持的交易所: {exchange}") from exc
+        return _to_exchange(exchange)
 
     from config.loader import EXCHANGE_MAP
 
     inferred_exchange = EXCHANGE_MAP.get("".join(c for c in code if c.isalpha()).upper(), None)
     if isinstance(inferred_exchange, str):
-        return Exchange(inferred_exchange)
+        return _to_exchange(inferred_exchange)
     return inferred_exchange
 
 
