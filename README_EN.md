@@ -38,7 +38,13 @@ GRANT ALL PRIVILEGES ON your_database.* TO 'your_user'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-Edit [config/database_config.json](./config/database_config.json):
+First copy the example config:
+
+```bash
+cp config/database_config.example.json config/database_config.json
+```
+
+Then edit your local config [config/database_config.json](./config/database_config.json):
 
 ```json
 {

@@ -37,7 +37,13 @@ GRANT ALL PRIVILEGES ON your_database.* TO 'your_user'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-编辑配置文件 [config/database_config.json](./config/database_config.json)：
+先复制示例配置文件：
+
+```bash
+cp config/database_config.example.json config/database_config.json
+```
+
+再编辑本地配置 [config/database_config.json](./config/database_config.json)：
 
 ```json
 {
