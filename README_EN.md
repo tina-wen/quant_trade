@@ -104,6 +104,47 @@ See [signals.py](./signals.py).
 | `abs` | `--level` |
 | `mr` | `--lag`, `--threshold` |
 
+## Backtest Flow
+
+The diagram below maps to scripts/backtest_exec.py and explains the pipeline from data input to signal generation, trade execution, and performance outputs.
+
+```mermaid
+flowchart TB
+  A[Start backtest<br/>scripts/backtest_exec.py] --> B[Create account<br/>acc_stats]
+  B --> C[Load market data<br/>DataQuery]
+  C --> D[Generate signals<br/>get_signal]
+  D --> E[Build trade input<br/>TradeOrder]
+  E --> F[Backtest loop<br/>trade_simulation.backtest]
+
+  subgraph LOOP[Per-trading-day processing]
+    F1[Stop-loss check<br/>do_stop_loss] --> F2[Open/close by signal<br/>open_pos / close_pos]
+    F2 --> F3[Mark-to-market settlement<br/>MTM + record balance]
+  end
+
+  F --> F1
+  F3 --> G[Performance stats<br/>calc_performances]
+  G --> H[Outputs<br/>perf_dict + pnl]
+
+  C -.-> X1[(price / target_price / trade_days)]
+  D -.-> X2[(signal series)]
+  F3 -.-> X3[(daily_balances)]
+  F2 -.-> X4[(close_trade_items)]
+  X3 --> G
+  X4 --> G
+
+  classDef s1 fill:#E8F1FF,stroke:#3B82F6,color:#0F172A;
+  classDef s2 fill:#ECFDF5,stroke:#10B981,color:#0F172A;
+  classDef s3 fill:#FFF7ED,stroke:#F59E0B,color:#0F172A;
+  classDef s4 fill:#FFE4E6,stroke:#E11D48,color:#0F172A;
+  classDef data fill:#FFFFFF,stroke:#94A3B8,stroke-dasharray:4 3,color:#334155;
+
+  class A,B s1;
+  class C,D,E s2;
+  class F,F1,F2,F3 s4;
+  class G,H s3;
+  class X1,X2,X3,X4 data;
+```
+
 ## Demo
 
 - Data writing page: https://github.com/user-attachments/assets/f7a9627a-bb17-4336-8acd-0cdf18773ce8
