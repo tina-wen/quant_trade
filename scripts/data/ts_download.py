@@ -40,7 +40,10 @@ def save_csv_bar(
 
     exchange = normalize_exchange(code, exchange)
     if exchange is None:
-        raise ValueError("无法确定交易所，请手动输入 exchange 或检查 EXCHANGE_MAP 配置")
+        raise ValueError(
+            "Unable to determine exchange. "
+            "Please provide exchange explicitly or check EXCHANGE_MAP config."
+        )
     if isinstance(interval, str):
         interval = freq_dict.get(interval, Interval.DAILY)
 

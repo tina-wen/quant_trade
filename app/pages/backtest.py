@@ -127,4 +127,60 @@ if st.button("开始回测"):
     st.success("回测完成")
     profiler.mark("结果渲染完成")
 
+st.divider()
+st.subheader("模拟实时回测")
+
+sim_num_klines = st.number_input("模拟K线数量", min_value=10, value=200)
+sim_volatility = st.slider("价格波动率", min_value=0.001, max_value=0.1, value=0.02, step=0.001)
+
+if st.button("开始模拟"):
+    from get_data import DataQuery as _DQ
+    from get_data import fake_stream, freq_dict, normalize_exchange
+    from signals import get_signal as _get_signal
+
+    interval_enum = freq_dict[interval]
+    exchange_enum = normalize_exchange(code)
+
+    bars = list(
+        fake_stream(
+            symbol=code,
+            exchange=exchange_enum,
+            interval=interval_enum,
+            num_klines=int(sim_num_klines),
+            volatility=sim_volatility,
+        )
+    )
+
+    price_df = pd.DataFrame(
+        [
+            {
+                "datetime": b.datetime,
+                "open": b.open_price,
+                "high": b.high_price,
+                "low": b.low_price,
+                "close": b.close_price,
+                "settle": b.settle_price,
+            }
+            for b in bars
+        ]
+    ).set_index("datetime")
+
+    sim_data_query = _DQ.from_price_df(price_df, code, exchange_enum, interval_enum, target=target)
+
+    sim_account = acc_stats(init_fund, shares, usr_name="sim", log_dir=log_dir)
+    signal = _get_signal(trade_strategy, config, sim_data_query)
+    sim_trade_order = TradeOrder(
+        signal, sim_data_query.target_price, code, interval_enum, stop_loss, shares
+    )
+    sim_simu = trade_simulation(sim_account)
+    sim_simu.calc_performances(sim_trade_order, margin_call, sim_data_query)
+
+    st.subheader("模拟每日权益")
+    st.line_chart(sim_simu.pnl["balance"], use_container_width=True)
+    st.subheader("模拟每日浮动盈亏")
+    st.bar_chart(sim_simu.pnl["daily_profit"], use_container_width=True)
+    perf_df = pd.DataFrame.from_dict(sim_simu.perf_dict, orient="index", columns=["值"])
+    st.table(perf_df)
+    st.success(f"模拟完成，共处理 {len(bars)} 条K线")
+
 profiler.render()

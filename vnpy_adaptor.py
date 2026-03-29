@@ -1,4 +1,5 @@
-# 不同类型数据与vnpy内置类BarData和TickData的转换
+# Adapters between project data and vn.py BarData/TickData models.
+from collections import deque
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -43,35 +44,28 @@ class BarDataV2(BarData):
 BarData = BarDataV2
 
 
-# 定义新的数据类，合约的相关信息
 @dataclass
 class ContractData(BaseData):
     symbol: str
     exchange: Exchange
     date: datetime
 
-    # 报价倍数
+    # Contract multiplier.
     times: float = 0.0
 
-    ### 以下可能随时间变化
-    # 交易手续费（率）
+    # Fee fields, can vary over time.
     fee: float = 0.0
     fee_rate: float = 0.0
     today_offset_fee: float = 0.0
-    # 保证金（率）
-    long_margin: float = 0.0  # 多头保证金率
-    short_margin: float = 0.0  # 空头保证金率
+    long_margin: float = 0.0
+    short_margin: float = 0.0
     settle: float = 0.0
 
 
 def df2BarList(df_input):
-    # 取得BarData的字段
     fields = BarDataV2.__dataclass_fields__
-    # req_cols = list(fields.keys())
     req_cols = [x for x in fields.keys() if x in df_input.columns]
-    # 转为numpy_ndarray读取效率高于遍历DataFrame?
     np_data = df_input[req_cols].to_numpy()
-    # 预分配List<BarData>内存
     result = [None] * len(df_input)
     for i in range(len(df_input)):
         args = {col: np_data[i, j] for j, col in enumerate(req_cols)}
@@ -81,12 +75,10 @@ def df2BarList(df_input):
             from dateutil import parser
 
             args["datetime"] = parser.parse(args["datetime"])
-        # 通过dataclass装饰的纯数据类，直接以字典形式实例化
         result[i] = BarDataV2(**args)
     return result
 
 
-# 补丁：动态传入mysql连接参数
 def patched_db_models(models: list[Model], db: MySQLDatabase):
     for model in models:
         if hasattr(model, "_meta"):
@@ -107,11 +99,8 @@ def get_db_config():
 
 patched_db_models([DbBarData, DbTickData, DbBarOverview, DbTickOverview], get_db_config())
 
-# 新增数据库model，用于读写contract相关数据
-
 
 class DbContractData(Model):
-    # 合约代码、交易所、时间戳
     symbol: CharField = CharField()
     exchange: CharField = CharField()
     date: DateTimeField = DateTimeField()
@@ -136,16 +125,34 @@ DbBarData._meta.add_field("settle_price", DoubleField())
 class my_sql_database(MysqlDatabase):
     def __init__(
         self,
+        batch_size: int = 10000,
+        buffer_size: int = 500,
     ):
+        """Initialize database client with isolated history/realtime buffer sizes.
+
+        batch_size controls history loading chunk size and _history_buffer max length.
+        buffer_size controls realtime context size and _realtime_buffer max length.
+        """
         self.db = get_db_config()
         self.db.connect()
+        self.batch_size = max(batch_size, 1)
+        self.buffer_size = max(buffer_size, 1)
+        # Realtime path: keep only the latest N bars per symbol.
+        self._realtime_buffer: dict[str, deque[BarDataV2]] = {}
+        # History path: isolated buffer for chunked historical loading.
+        self._history_buffer: dict[str, deque[BarDataV2]] = {}
         tables = [DbBarData, DbTickData, DbContractData, DbBarOverview, DbTickOverview]
         new_tables = [x for x in tables if not x.table_exists()]
         self.db.create_tables(new_tables)
 
-    def load_bar_data(
-        self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime
-    ) -> list[BarDataV2]:
+    def _build_bar_query(
+        self,
+        symbol: str,
+        exchange: Exchange,
+        interval: Interval,
+        start: datetime,
+        end: datetime,
+    ) -> ModelSelect:
         conditions = (
             (DbBarData.symbol == symbol)
             & (DbBarData.interval == interval.value)
@@ -154,28 +161,111 @@ class my_sql_database(MysqlDatabase):
         )
         if exchange is not None:
             conditions = conditions & (DbBarData.exchange == exchange.value)
-        s: ModelSelect = DbBarData.select().where(conditions).order_by(DbBarData.datetime)
 
-        bars: list[BarData] = []
-        for db_bar in s:
-            bar: BarDataV2 = BarDataV2(
-                symbol=db_bar.symbol,
-                exchange=Exchange(db_bar.exchange),
-                datetime=datetime.fromtimestamp(db_bar.datetime.timestamp(), DB_TZ),
-                interval=Interval(db_bar.interval),
-                volume=db_bar.volume,
-                turnover=db_bar.turnover,
-                open_interest=db_bar.open_interest,
-                open_price=db_bar.open_price,
-                high_price=db_bar.high_price,
-                low_price=db_bar.low_price,
-                close_price=db_bar.close_price,
-                settle_price=db_bar.settle_price,
-                gateway_name="DB",
+        return DbBarData.select().where(conditions)
+
+    @staticmethod
+    def _to_bar_data(db_bar: DbBarData) -> BarDataV2:
+        return BarDataV2(
+            symbol=db_bar.symbol,
+            exchange=Exchange(db_bar.exchange),
+            datetime=datetime.fromtimestamp(db_bar.datetime.timestamp(), DB_TZ),
+            interval=Interval(db_bar.interval),
+            volume=db_bar.volume,
+            turnover=db_bar.turnover,
+            open_interest=db_bar.open_interest,
+            open_price=db_bar.open_price,
+            high_price=db_bar.high_price,
+            low_price=db_bar.low_price,
+            close_price=db_bar.close_price,
+            settle_price=db_bar.settle_price,
+            gateway_name="DB",
+        )
+
+    def _iter_bar_data(
+        self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime
+    ):
+        s: ModelSelect = self._build_bar_query(symbol, exchange, interval, start, end).order_by(
+            DbBarData.datetime
+        )
+
+        found = False
+        for db_bar in s.iterator():
+            found = True
+            yield self._to_bar_data(db_bar)
+
+        if not found:
+            print(f"Warning: no data found for {symbol} between {start} and {end}")
+
+    def init_realtime_buffer(
+        self,
+        symbol: str,
+        exchange: Exchange,
+        interval: Interval,
+        lookback_days: int = 30,
+        end: datetime | None = None,
+    ) -> deque[BarDataV2]:
+        end_dt = end or datetime.now(DB_TZ)
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=DB_TZ)
+        start_dt = end_dt - timedelta(days=lookback_days)
+
+        s: ModelSelect = (
+            self._build_bar_query(symbol, exchange, interval, start_dt, end_dt)
+            .order_by(DbBarData.datetime.desc())
+            .limit(self.buffer_size)
+        )
+
+        recent_bars = [self._to_bar_data(db_bar) for db_bar in s.iterator()]
+        recent_bars.reverse()
+        if not recent_bars:
+            print(f"Warning: no data found for {symbol} between {start_dt} and {end_dt}")
+
+        buffer: deque[BarDataV2] = deque(recent_bars, maxlen=self.buffer_size)
+        self._realtime_buffer[symbol] = buffer
+        return buffer
+
+    def append_kline(
+        self, symbol: str, kline: BarDataV2, lookback_days: int = 30
+    ) -> deque[BarDataV2]:
+        if symbol != kline.symbol:
+            raise ValueError(f"symbol={symbol} does not match kline.symbol={kline.symbol}")
+
+        if symbol not in self._realtime_buffer:
+            self.init_realtime_buffer(
+                symbol=symbol,
+                exchange=kline.exchange,
+                interval=kline.interval,
+                lookback_days=lookback_days,
+                end=kline.datetime,
             )
-            bars.append(bar)
 
-        return bars
+        self._realtime_buffer[symbol].append(kline)
+        return self._realtime_buffer[symbol]
+
+    def load_bar_data(
+        self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime
+    ):
+        if symbol not in self._history_buffer:
+            self._history_buffer[symbol] = deque(maxlen=self.batch_size)
+
+        chunk: list[BarDataV2] = []
+        for bar in self._iter_bar_data(symbol, exchange, interval, start, end):
+            self._history_buffer[symbol].append(bar)
+            chunk.append(bar)
+            if len(chunk) >= self.batch_size:
+                yield chunk
+                chunk = []
+
+        if chunk:
+            yield chunk
+
+    def get_overview_df(self) -> DataFrame:
+        overview_rows = [
+            {field_name: getattr(item, field_name) for field_name in item._meta.sorted_field_names}
+            for item in self.get_bar_overview()
+        ]
+        return pd.DataFrame.from_records(overview_rows)
 
     def save_contr_info(self, contr_data: list[ContractData]):
         data: list = []
@@ -220,9 +310,6 @@ class my_sql_database(MysqlDatabase):
         return contracts
 
 
-# tushare_datafeed的api适配
-
-
 class ts_df(Datafeed):
     def __init__(self, ts_pwd, ts_usr="token"):
         super().__init__()
@@ -231,7 +318,7 @@ class ts_df(Datafeed):
 
     def init(self, output=print):
         super().init(output)
-        # Interval不支持Monthly
+        # Monthly is not supported by Interval.
         self.apis = dict(
             zip(
                 [Interval.WEEKLY, Interval.DAILY, Interval.HOUR, Interval.MINUTE],
@@ -244,9 +331,8 @@ class ts_df(Datafeed):
             )
         )
 
-    # query_bar_data加一个字段settle_price
     def query_bar_history(self, req, output=print) -> list[BarDataV2]:
-        """查询k线数据"""
+        """Query bar history and map to BarDataV2."""
         if not self.inited:
             self.init(output)
 
@@ -284,7 +370,6 @@ class ts_df(Datafeed):
         bar_dict: dict[datetime, BarDataV2] = {}
         data: list[BarDataV2] = []
 
-        # 处理原始数据中的NaN值
         df.fillna(0, inplace=True)
 
         if df is not None:
@@ -303,7 +388,7 @@ class ts_df(Datafeed):
 
                 turnover = row.get("amount", 0)
                 open_interest = row.get("oi", 0)
-                settle_price = row.get("settle", 0)  # 日内没有结算价数据
+                settle_price = row.get("settle", 0)
 
                 bar: BarDataV2 = BarDataV2(
                     symbol=req.symbol,
@@ -329,7 +414,7 @@ class ts_df(Datafeed):
         return data
 
     def query_contract_data(self, req, output=print) -> list[ContractData]:
-        """查每日结算数据"""
+        """Query daily contract settlement data."""
         if not self.inited:
             self.init(output)
 
@@ -351,9 +436,10 @@ class ts_df(Datafeed):
             )
             if len(df) == 0:
                 raise ValueError(
-                    f"未成功从tushare数据库中取得{ts_symbol}在{start}~{end}时期的合约数据，数据条数为0"
+                    f"Failed to fetch contract data for {ts_symbol} between {start} and {end}: "
+                    "received 0 rows"
                 )
-            # 取出某个交易所（某个品种）所有合约的报价倍数
+            # Load contract multiplier for this futures symbol.
             trade_code = ts_symbol.split(".")[0]
             fut_code = "".join([x for x in trade_code if x.isalpha()])
             times_df = self.pro.fut_basic(
@@ -368,7 +454,6 @@ class ts_df(Datafeed):
         contr_dict: dict[datetime, ContractData] = {}
         data: list[ContractData] = []
 
-        # 处理原始数据中的NaN值
         df.fillna(0, inplace=True)
 
         if df is not None:
