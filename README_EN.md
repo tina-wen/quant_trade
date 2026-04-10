@@ -110,25 +110,34 @@ The diagram below maps to scripts/backtest_exec.py and explains the pipeline fro
 
 ```mermaid
 flowchart TB
-  A[Start backtest<br/>scripts/backtest_exec.py] --> B[Create account<br/>acc_stats]
-  B --> C[Load market data<br/>DataQuery]
+  A[Start backtest<br/>scripts/backtest_exec.py] --> A1{Data source}
+  A1 -->|sim=true| B1[Generate synthetic bars<br/>fake_stream + DataQuery.from_price_df]
+  A1 -->|sim=false| B2[Load historical bars<br/>DataQuery]
+  B1 --> C[Create account<br/>acc_stats]
+  B2 --> C
   C --> D[Generate signals<br/>get_signal]
   D --> E[Build trade input<br/>TradeOrder]
-  E --> F[Backtest loop<br/>trade_simulation.backtest]
+  E --> F[Enter backtest loop]
 
-  subgraph LOOP[Per-trading-day processing]
-    F1[Stop-loss check<br/>do_stop_loss] --> F2[Open/close by signal<br/>open_pos / close_pos]
-    F2 --> F3[Mark-to-market settlement<br/>MTM + record balance]
+  subgraph LOOP[Per-bar processing on bar_times]
+    F1[Resolve current bar trade-date<br/>resolve_trade_date] --> F2[Stop-loss check<br/>do_stop_loss]
+    F2 --> F3[Process pending signals up to current time<br/>time-ordered progression]
+    F3 --> F4[Open/close by signal<br/>open_pos / close_pos]
+    F4 --> F5{Last bar of trade-date?}
+    F5 -->|yes| F6[Mark-to-market settlement<br/>MTM + daily equity snapshot]
+    F5 -->|no| F7[Continue next bar]
   end
 
   F --> F1
-  F3 --> G[Performance stats<br/>calc_performances]
+  F6 --> G[Performance stats<br/>calc_performances]
   G --> H[Outputs<br/>perf_dict + pnl]
 
-  C -.-> X1[(price / target_price / trade_days)]
-  D -.-> X2[(signal series)]
-  F3 -.-> X3[(daily_balances)]
-  F2 -.-> X4[(close_trade_items)]
+  B1 -.-> X0[(market bars / trade-date mapping)]
+  B2 -.-> X0
+  D -.-> X2[(strategy signal timeline)]
+  F6 -.-> X3[(daily account equity log)]
+  F4 -.-> X4[(closed-trade records)]
+  X0 --> F
   X3 --> G
   X4 --> G
 
@@ -138,12 +147,21 @@ flowchart TB
   classDef s4 fill:#FFE4E6,stroke:#E11D48,color:#0F172A;
   classDef data fill:#FFFFFF,stroke:#94A3B8,stroke-dasharray:4 3,color:#334155;
 
-  class A,B s1;
+  class A,A1,B1,B2 s1;
   class C,D,E s2;
-  class F,F1,F2,F3 s4;
+  class F,F1,F2,F3,F4,F5,F6,F7 s4;
   class G,H s3;
-  class X1,X2,X3,X4 data;
+  class X0,X2,X3,X4 data;
 ```
+
+## Trade Execution Rules
+
+- Stop-loss check: `do_stop_loss` runs on every bar; it returns early internally when there is no position.
+- Opening from flat: open is attempted only when signal is non-zero and the post-stop-loss re-entry constraint is satisfied.
+- Reverse signal: close all current lots first, then attempt to open new lots up to the configured target size.
+- Same-direction cooldown after stop-loss: if stop-loss is triggered, immediate same-direction re-entry is blocked; the cooldown is cleared only after one full successful open cycle.
+- Open failure handling: when `open_pos` returns `False` (typically insufficient funds due to margin/fee), the current add-position attempt stops.
+- Partial position policy: use the current break semantics, meaning partial fills are accepted (for example target 3 lots but only 1-2 lots can be opened), and later close operations use actual held lots.
 
 ## Demo
 

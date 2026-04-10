@@ -109,25 +109,34 @@ uv run streamlit run app/HomePage.py
 
 ```mermaid
 flowchart TB
-  A[启动回测<br/>scripts/backtest_exec.py] --> B[创建账户<br/>acc_stats]
-  B --> C[加载行情<br/>DataQuery]
+  A[启动回测<br/>scripts/backtest_exec.py] --> A1{数据来源}
+  A1 -->|sim=true| B1[生成模拟K线<br/>fake_stream + DataQuery.from_price_df]
+  A1 -->|sim=false| B2[加载历史数据<br/>DataQuery]
+  B1 --> C[创建账户<br/>acc_stats]
+  B2 --> C
   C --> D[生成信号<br/>get_signal]
   D --> E[封装报单<br/>TradeOrder]
-  E --> F[回测主循环<br/>trade_simulation.backtest]
+  E --> F[进入 backtest 主循环]
 
-  subgraph LOOP[逐日处理 trade_days]
-    F1[止损检查<br/>do_stop_loss] --> F2[按信号开平仓<br/>open_pos / close_pos]
-    F2 --> F3[盯市结算<br/>MTM + 记录余额]
+  subgraph LOOP[逐bar处理 bar_times]
+    F1[计算当前 bar_trade_date<br/>resolve_trade_date] --> F2[止损检查<br/>do_stop_loss]
+    F2 --> F3[处理截至当前时点的待执行信号<br/>按时间顺序推进]
+    F3 --> F4[按信号开平仓<br/>open_pos / close_pos]
+    F4 --> F5{是否该交易日最后一根bar}
+    F5 -->|是| F6[按交易日盯市结算<br/>MTM + 日度权益快照]
+    F5 -->|否| F7[继续下一根bar]
   end
 
   F --> F1
-  F3 --> G[绩效统计<br/>calc_performances]
+  F6 --> G[绩效统计<br/>calc_performances]
   G --> H[输出<br/>perf_dict + pnl]
 
-  C -.-> X1[(price / target_price / trade_days)]
-  D -.-> X2[(signal 序列)]
-  F3 -.-> X3[(daily_balances)]
-  F2 -.-> X4[(close_trade_items)]
+  B1 -.-> X0[(行情K线 / 交易日映射)]
+  B2 -.-> X0
+  D -.-> X2[(交易信号序列)]
+  F6 -.-> X3[(日度账户权益记录)]
+  F4 -.-> X4[(已平仓成交记录)]
+  X0 --> F
   X3 --> G
   X4 --> G
 
@@ -137,12 +146,21 @@ flowchart TB
   classDef s4 fill:#FFE4E6,stroke:#E11D48,color:#0F172A;
   classDef data fill:#FFFFFF,stroke:#94A3B8,stroke-dasharray:4 3,color:#334155;
 
-  class A,B s1;
+  class A,A1,B1,B2 s1;
   class C,D,E s2;
-  class F,F1,F2,F3 s4;
+  class F,F1,F2,F3,F4,F5,F6,F7 s4;
   class G,H s3;
-  class X1,X2,X3,X4 data;
+  class X0,X2,X3,X4 data;
 ```
+
+## 交易场景处理规则
+
+- 止损检查：每根 bar 都执行一次 `do_stop_loss`；无持仓时函数内部直接返回。
+- 空仓开仓：仅在信号非 0 且满足止损后再入场限制时尝试开仓。
+- 反手信号：先按当前持仓手数全部平仓，再按目标手数尝试开新仓。
+- 止损后同向限制：若当日触发过止损，会阻止同方向立即再开；只有一次完整开仓成功后才解除限制。
+- 开仓失败处理：`open_pos` 返回 `False`（常见原因是保证金/手续费导致资金不足）时停止本次加仓尝试。
+- 半仓策略：采用“当前 break 语义”，即允许部分成交（例如目标 3 手实际仅开成 1~2 手），后续按实际持仓手数平仓。
 
 ## 演示
 
