@@ -1,9 +1,9 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import holidays
 import pandas as pd
 
-from get_data import DataQuery, normalize_interval
+from get_data import DataQuery, normalize_interval, resolve_trade_date
 
 from .account_statistics import acc_stats
 
@@ -49,65 +49,81 @@ class trade_simulation:
     def backtest(self, trade_order: TradeOrder, margin_call, data_query: DataQuery):
         daily_balances = {}
 
-        no_day, index_signal = 0, 0
-        day = data_query.trade_days[no_day]
-        if_stop_loss = False
+        bar_times = getattr(data_query, "bar_times", getattr(data_query, "trade_days", []))
+        if not bar_times:
+            return daily_balances
 
-        while no_day < len(data_query.trade_days):
-            day = data_query.trade_days[no_day]
+        trade_dates = getattr(
+            data_query,
+            "trade_dates",
+            [
+                resolve_trade_date(bar_time, trade_order.code, data_query.exchange)
+                for bar_time in bar_times
+            ],
+        )
 
-            if not if_stop_loss:
-                open_price, high_price, low_price, close_price = (
-                    data_query.open_price[no_day],
-                    data_query.high_price[no_day],
-                    data_query.low_price[no_day],
-                    data_query.close_price[no_day],
-                )
+        index_signal = 0
+        stop_loss_triggered = False  # 发生过止损，限制同向再入场
+        origin_dir = None  # 触发止损时的持仓方向
 
-                if index_signal >= len(trade_order.time):
-                    break
-                else:
-                    if_stop_loss, origin_dir = self.account.do_stop_loss(
-                        trade_order.time[index_signal],
-                        trade_order.code,
-                        open_price,
-                        high_price,
-                        low_price,
-                        close_price,
-                    )
-
-            cur_time, signal, price = (
-                trade_order.time[index_signal],
-                trade_order.signal[index_signal],
-                trade_order.prices[index_signal],
+        for bar_index, bar_time in enumerate(bar_times):
+            bar_trade_date = trade_dates[bar_index]
+            open_price, high_price, low_price, close_price = (
+                data_query.open_price[bar_index],
+                data_query.high_price[bar_index],
+                data_query.low_price[bar_index],
+                data_query.close_price[bar_index],
             )
-            while cur_time.date() <= day.date():
-                if signal != signal:
+
+            # 每根bar都检查止损；do_stop_loss无持仓时直接返回(False, None)
+            sl_fired, sl_dir = self.account.do_stop_loss(
+                bar_time,
+                trade_order.code,
+                open_price,
+                high_price,
+                low_price,
+                close_price,
+            )
+            if sl_fired:
+                stop_loss_triggered = True
+                origin_dir = sl_dir
+
+            while index_signal < len(trade_order.signal):
+                cur_time, signal, price = (
+                    trade_order.time[index_signal],
+                    trade_order.signal[index_signal],
+                    trade_order.prices[index_signal],
+                )
+                cur_trade_date = resolve_trade_date(cur_time, trade_order.code, data_query.exchange)
+
+                if cur_trade_date > bar_trade_date or cur_time > bar_time:
+                    break
+
+                if pd.isna(signal):
                     index_signal += 1
-                    if index_signal == len(trade_order.signal):
-                        break
-                    cur_time, signal, price = (
-                        trade_order.time[index_signal],
-                        trade_order.signal[index_signal],
-                        trade_order.prices[index_signal],
-                    )
                     continue
+
                 n, direction = self.account.get_position_by_code(trade_order.code)
                 if (
                     direction is None
                     and signal
-                    and (not if_stop_loss or signal2dir(signal) != origin_dir)
-                ):
+                    and (not stop_loss_triggered or signal2dir(signal) != origin_dir)
+                ):  # 无持仓且有交易信号，且非止损后同向开仓，才执行开仓
                     for _ in range(trade_order.shares):
-                        self.account.open_pos(
+                        res = self.account.open_pos(
                             trade_order.code,
                             price,
                             signal2dir(signal),
                             trade_order.stop_loss,
                             cur_time,
                         )
-                    if_stop_loss = False
-                elif direction != signal2dir(signal):
+                        if not res:  # 资金不足，停止本次开仓尝试，不修改止损状态
+                            break
+                    else:
+                        stop_loss_triggered = False
+                elif direction != signal2dir(
+                    signal
+                ):  # 有持仓但交易信号反向，执行平仓后再开新仓（如果有信号）
                     close_dir = "long" if direction == "short" else "short"
                     for _ in range(n):
                         target_trade = self.account.get_target_close_trade(
@@ -116,27 +132,24 @@ class trade_simulation:
                         self.account.close_pos(
                             trade_order.code, price, close_dir, target_trade, cur_time
                         )
-                    if signal and (not if_stop_loss or signal2dir(signal) != origin_dir):
+                    if signal and (not stop_loss_triggered or signal2dir(signal) != origin_dir):
                         for _ in range(trade_order.shares):
                             res = self.account.open_pos(
                                 trade_order.code, price, close_dir, trade_order.stop_loss, cur_time
                             )
-                            if not res:
-                                if_stop_loss = True
+                            if not res:  # 资金不足，停止本次开仓尝试，不修改止损状态
                                 break
-                        if_stop_loss = False
+                        else:
+                            stop_loss_triggered = False
                 index_signal += 1
-                if index_signal == len(trade_order.signal):
-                    break
-                cur_time, signal, price = (
-                    trade_order.time[index_signal],
-                    trade_order.signal[index_signal],
-                    trade_order.prices[index_signal],
-                )
 
-            self.account.MTM(margin_call, day)
-            daily_balances[day] = {"balance": self.account.balance}
-            no_day += 1
+            is_last_bar_of_trade_day = (
+                bar_index == len(bar_times) - 1 or trade_dates[bar_index + 1] != bar_trade_date
+            )
+            if is_last_bar_of_trade_day:
+                settle_dt = datetime.combine(bar_trade_date, datetime.min.time())
+                self.account.MTM(margin_call, settle_dt)
+                daily_balances[settle_dt] = {"balance": self.account.balance}
 
         return daily_balances
 

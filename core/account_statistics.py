@@ -119,8 +119,7 @@ class acc_stats:
         margin, commission_fee = trade_item.margin, trade_item.get_trade_commission(price, time)
         if self.funds < margin + commission_fee:
             logging.error(f"{time}流动资金{self.funds}不足以开仓！")
-            err_msg = f"{time}流动资金{self.funds}不足以开仓！"
-            return err_msg
+            return False
         self.funds -= margin + commission_fee
         self.balance -= commission_fee
         if code in self.open_trade_items:
@@ -133,6 +132,7 @@ class acc_stats:
             f"open_price={price}, commission={commission_fee}, margin={margin}"
         )
         logging.info(f"Account equity={self.balance}, available funds={self.funds}")
+        return True
 
     def get_target_close_trade(self, code, direction):
         """
