@@ -161,3 +161,22 @@ flowchart TB
 Issues and PRs are welcome.
 
 GitHub: https://github.com/tina-wen/quant_trade
+
+## Troubleshooting
+
+### 1. offset-naive vs offset-aware datetime error
+
+- Symptom: `TypeError: can't compare offset-naive and offset-aware datetimes`
+- Cause: market timestamps (timezone-aware) are compared against session windows (naive local datetime).
+- Fix: normalize datetimes in `get_data.py` before comparisons (convert to local trading timezone, then drop tz).
+
+### 2. Night session and trade-date mapping
+
+- For night-session products (for example copper), bars after midnight may belong to the previous trading day session.
+- Trade-date mapping should follow `resolve_trade_date` before stop-loss, settlement, and performance calculations.
+
+### 3. Missing settlement record
+
+- Symptom: `no settlement data found for YYYY-MM-DD`
+- Cause: missing contract-info record on that trading date.
+- Fix: query exact date first; if missing, fallback to the nearest available prior record within a lookback window.

@@ -3,7 +3,7 @@ import os
 from collections import deque
 from datetime import datetime
 
-from get_data import Cache, get_contract_info
+from get_data import Cache, get_contract_info, resolve_trade_date
 
 from .utils import get_log_name
 
@@ -217,13 +217,21 @@ class acc_stats:
 
             # 检查触发多头止损
             long_stop_loss = trade.direction == "long" and (
-                (trade.open_time.date() < time.date() and open_price <= trade.stop_loss_point)
+                (
+                    resolve_trade_date(trade.open_time, contract)
+                    < resolve_trade_date(time, contract)
+                    and open_price <= trade.stop_loss_point
+                )
                 or min(close_price, low_price) <= trade.stop_loss_point
             )
 
             # 检查触发空头止损
             short_stop_loss = trade.direction == "short" and (
-                (trade.open_time.date() < time.date() and open_price >= trade.stop_loss_point)
+                (
+                    resolve_trade_date(trade.open_time, contract)
+                    < resolve_trade_date(time, contract)
+                    and open_price >= trade.stop_loss_point
+                )
                 or max(close_price, high_price) >= trade.stop_loss_point
             )
 

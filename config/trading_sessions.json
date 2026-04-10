@@ -1,0 +1,97 @@
+{
+  "exchange_defaults": {
+    "SHFE": {
+      "day_sessions": [["09:00", "10:15"], ["10:30", "11:30"], ["13:30", "15:00"]],
+      "night_sessions": [],
+      "auction": {
+        "day": ["08:55", "09:00"],
+        "night": ["20:55", "21:00"]
+      },
+      "has_night": true
+    },
+    "INE": {
+      "day_sessions": [["09:00", "10:15"], ["10:30", "11:30"], ["13:30", "15:00"]],
+      "night_sessions": [],
+      "auction": {
+        "day": ["08:55", "09:00"],
+        "night": ["20:55", "21:00"]
+      },
+      "has_night": true
+    },
+    "DCE": {
+      "day_sessions": [["09:00", "10:15"], ["10:30", "11:30"], ["13:30", "15:00"]],
+      "night_sessions": [["21:00", "23:00"]],
+      "auction": {
+        "day": ["08:55", "09:00"],
+        "night": ["20:55", "21:00"]
+      },
+      "has_night": true
+    },
+    "CZCE": {
+      "day_sessions": [["09:00", "10:15"], ["10:30", "11:30"], ["13:30", "15:00"]],
+      "night_sessions": [["21:00", "23:00"]],
+      "auction": {
+        "day": ["08:55", "09:00"],
+        "night": ["20:55", "21:00"]
+      },
+      "has_night": true
+    },
+    "CFFEX": {
+      "day_sessions": [["09:30", "11:30"], ["13:00", "15:00"]],
+      "night_sessions": [],
+      "auction": {
+        "day": ["09:25", "09:30"]
+      },
+      "has_night": false
+    },
+    "GFEX": {
+      "day_sessions": [["09:00", "10:15"], ["10:30", "11:30"], ["13:30", "15:00"]],
+      "night_sessions": [],
+      "auction": {
+        "day": ["08:55", "09:00"]
+      },
+      "has_night": false
+    }
+  },
+  "product_overrides": {
+    "RB": {"night_sessions": [["21:00", "23:00"]]},
+    "HC": {"night_sessions": [["21:00", "23:00"]]},
+    "RU": {"night_sessions": [["21:00", "23:00"]]},
+    "BU": {"night_sessions": [["21:00", "23:00"]]},
+    "FU": {"night_sessions": [["21:00", "23:00"]]},
+    "SP": {"night_sessions": [["21:00", "23:00"]]},
+    "M": {"night_sessions": [["21:00", "23:00"]]},
+    "Y": {"night_sessions": [["21:00", "23:00"]]},
+    "P": {"night_sessions": [["21:00", "23:00"]]},
+    "I": {"night_sessions": [["21:00", "23:00"]]},
+    "J": {"night_sessions": [["21:00", "23:00"]]},
+    "JM": {"night_sessions": [["21:00", "23:00"]]},
+    "SR": {"night_sessions": [["21:00", "23:00"]]},
+    "CF": {"night_sessions": [["21:00", "23:00"]]},
+    "TA": {"night_sessions": [["21:00", "23:00"]]},
+    "MA": {"night_sessions": [["21:00", "23:00"]]},
+    "RM": {"night_sessions": [["21:00", "23:00"]]},
+    "FG": {"night_sessions": [["21:00", "23:00"]]},
+    "CU": {"night_sessions": [["21:00", "01:00"]]},
+    "AL": {"night_sessions": [["21:00", "01:00"]]},
+    "ZN": {"night_sessions": [["21:00", "01:00"]]},
+    "PB": {"night_sessions": [["21:00", "01:00"]]},
+    "NI": {"night_sessions": [["21:00", "01:00"]]},
+    "SN": {"night_sessions": [["21:00", "01:00"]]},
+    "SS": {"night_sessions": [["21:00", "01:00"]]},
+    "AU": {"night_sessions": [["21:00", "02:30"]]},
+    "AG": {"night_sessions": [["21:00", "02:30"]]},
+    "SC": {"night_sessions": [["21:00", "02:30"]]},
+    "IF": {"night_sessions": []},
+    "IH": {"night_sessions": []},
+    "IC": {"night_sessions": []},
+    "IM": {"night_sessions": []},
+    "T": {"night_sessions": []},
+    "TF": {"night_sessions": []},
+    "TS": {"night_sessions": []},
+    "TL": {"night_sessions": []},
+    "SI": {"night_sessions": []},
+    "LC": {"night_sessions": []},
+    "PS": {"night_sessions": []}
+  }
+}
