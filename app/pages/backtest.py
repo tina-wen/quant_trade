@@ -86,7 +86,7 @@ end_date, end_time = (
 start, end = datetime.combine(start_date, start_time), datetime.combine(end_date, end_time)
 
 # 交易频率
-interval = st.selectbox("交易频率", ["日线", "分钟", "周", "小时"])
+interval = st.selectbox("交易频率", ["d", "w", "1m", "1h"])
 profiler.mark("参数区渲染")
 
 # 回测
@@ -135,21 +135,31 @@ sim_volatility = st.slider("价格波动率", min_value=0.001, max_value=0.1, va
 
 if st.button("开始模拟"):
     from get_data import DataQuery as _DQ
-    from get_data import fake_stream, freq_dict, normalize_exchange
+    from get_data import fake_stream, normalize_exchange, normalize_interval
     from signals import get_signal as _get_signal
 
-    interval_enum = freq_dict[interval]
+    interval_enum = normalize_interval(interval)
     exchange_enum = normalize_exchange(code)
+    if exchange_enum is None:
+        st.error(f"无法识别合约 {code} 对应的交易所，请检查合约代码后重试。")
+        st.stop()
 
-    bars = list(
-        fake_stream(
-            symbol=code,
-            exchange=exchange_enum,
-            interval=interval_enum,
-            num_klines=int(sim_num_klines),
-            volatility=sim_volatility,
+    try:
+        bars = list(
+            fake_stream(
+                symbol=code,
+                exchange=exchange_enum,
+                interval=interval_enum,
+                num_klines=int(sim_num_klines),
+                volatility=sim_volatility,
+            )
         )
-    )
+    except ValueError as exc:
+        st.error(f"模拟参数无效：{exc}")
+        st.stop()
+    except Exception as exc:
+        st.error(f"模拟数据加载失败，请稍后重试：{exc}")
+        st.stop()
 
     price_df = pd.DataFrame(
         [

@@ -6,7 +6,7 @@ from vnpy.trader.constant import Exchange, Interval
 from vnpy.trader.object import HistoryRequest
 
 from config.loader import DB_CONFIG as db_config
-from get_data import freq_dict, normalize_exchange
+from get_data import normalize_exchange, normalize_interval
 from vnpy_adaptor import df2BarList, my_sql_database, ts_df
 
 
@@ -44,8 +44,7 @@ def save_csv_bar(
             "Unable to determine exchange. "
             "Please provide exchange explicitly or check EXCHANGE_MAP config."
         )
-    if isinstance(interval, str):
-        interval = freq_dict.get(interval, Interval.DAILY)
+    interval = normalize_interval(interval)
 
     demo_data["symbol"] = [code] * len(demo_data)
     demo_data["exchange"] = [exchange] * len(demo_data)

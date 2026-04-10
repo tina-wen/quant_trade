@@ -3,7 +3,7 @@ from datetime import timedelta
 import holidays
 import pandas as pd
 
-from get_data import DataQuery, freq_dict
+from get_data import DataQuery, normalize_interval
 
 from .account_statistics import acc_stats
 
@@ -34,10 +34,7 @@ class TradeOrder:
         self.time = time
         self.prices = prices.tolist()
         self.code = code
-        if isinstance(interval, str):
-            self.interval = freq_dict.get(interval, interval)
-        else:
-            self.interval = interval
+        self.interval = normalize_interval(interval)
         self.stop_loss = stop_loss
         self.shares = n_shares
 

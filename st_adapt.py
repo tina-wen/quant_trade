@@ -5,7 +5,7 @@ import streamlit as st
 
 from app.utils import get_available_contracts
 from core.simulation import TradeOrder, acc_stats, trade_simulation
-from get_data import DataQuery, Ex_dict, freq_dict, get_overview_df
+from get_data import DataQuery, Ex_dict, get_overview_df, normalize_interval
 from scripts.data.ts_download import save_csv_bar, save_ts_bar, save_ts_contr
 from signals import get_signal
 
@@ -72,7 +72,7 @@ def download_data_from_tushare():
 
         exchange = EXCHANGE_MAP.get("".join(c for c in code if c.isalpha()), None)
 
-    interval = freq_dict[st.selectbox("数据频率", ["日线", "分钟", "周"])]
+    interval = normalize_interval(st.selectbox("数据频率", ["d", "1m", "1h", "w"]))
 
     if data_source == ".csv":
         uploaded_file = st.file_uploader("上传.csv文件", type="csv")
@@ -156,9 +156,10 @@ def backtest_vis():
     interval = st.selectbox(
         "交易频率",
         [
-            "日线",
-            "分钟",
-            "周",
+            "d",
+            "1m",
+            "1h",
+            "w",
         ],
     )
 

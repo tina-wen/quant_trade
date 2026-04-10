@@ -76,8 +76,8 @@ def get_args(argv=None):
     parser.add_argument(
         "--interval",
         type=str,
-        default="日线",
-        help="Bar interval key matching freq_dict (e.g. '日线', '分钟')",
+        default="d",
+        help="Bar interval in vn.py format (e.g. d, w, 1m, 1h)",
     )
     args = parser.parse_args(argv)
 

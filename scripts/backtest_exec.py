@@ -1,7 +1,5 @@
 from datetime import datetime
 
-from vnpy.trader.constant import Interval
-
 from core.account_statistics import acc_stats
 from core.simulation import TradeOrder, trade_simulation
 from get_data import DataQuery
@@ -28,9 +26,9 @@ if __name__ == "__main__":
         # Simulation mode: generate synthetic bars via fake_stream, bypass the database.
         import pandas as pd
 
-        from get_data import fake_stream, freq_dict, normalize_exchange
+        from get_data import fake_stream, normalize_exchange, normalize_interval
 
-        interval_enum = freq_dict.get(args.interval, Interval.DAILY)
+        interval_enum = normalize_interval(args.interval)
         exchange_enum = normalize_exchange(args.code)
 
         bars = list(
@@ -55,6 +53,7 @@ if __name__ == "__main__":
                 for b in bars
             ]
         ).set_index("datetime")
+        print(f"{price_df}")
         data_query = DataQuery.from_price_df(
             price_df, args.code, exchange_enum, interval_enum, target=args.target
         )
@@ -64,7 +63,9 @@ if __name__ == "__main__":
         # Normal mode: load historical data from the database.
         start_time = datetime.strptime(args.start_time, "%Y-%m-%d")
         end_time = datetime.strptime(args.end_time, "%Y-%m-%d")
-        interval_enum = Interval.DAILY
+        from get_data import normalize_interval
+
+        interval_enum = normalize_interval(args.interval)
         data_query = DataQuery(args.code, start_time, end_time, interval_enum, target=args.target)
         args.interval = interval_enum
 

@@ -2,7 +2,7 @@ import streamlit as st
 
 from app.perf import init_page_profiler
 from config.loader import EXCHANGE_MAP
-from get_data import freq_dict, get_db_query, get_overview_df, normalize_exchange
+from get_data import get_db_query, get_overview_df, normalize_exchange, normalize_interval
 
 profiler = init_page_profiler("data_writer")
 
@@ -82,8 +82,8 @@ if st.button("检查合约结算信息"):
         st.success(f"合约结算信息已存在，交易所为{exchange}")
     profiler.mark("完成检查结算信息")
 
-raw_interval = st.selectbox("数据频率", ["日线", "小时", "分钟", "周"])
-interval = freq_dict[raw_interval]
+raw_interval = st.selectbox("数据频率", ["d", "1h", "1m", "w"])
+interval = normalize_interval(raw_interval)
 profiler.mark("频率选择")
 
 if data_source == ".csv":

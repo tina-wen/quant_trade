@@ -1,4 +1,5 @@
 # Adapters between project data and vn.py BarData/TickData models.
+import logging
 from collections import deque
 from copy import deepcopy
 from dataclasses import dataclass
@@ -138,7 +139,7 @@ class my_sql_database(MysqlDatabase):
         self.batch_size = max(batch_size, 1)
         self.buffer_size = max(buffer_size, 1)
         # Realtime path: keep only the latest N bars per symbol.
-        self._realtime_buffer: dict[str, deque[BarDataV2]] = {}
+        self._realtime_buffer: dict[tuple, deque[BarDataV2]] = {}
         # History path: isolated buffer for chunked historical loading.
         self._history_buffer: dict[str, deque[BarDataV2]] = {}
         tables = [DbBarData, DbTickData, DbContractData, DbBarOverview, DbTickOverview]
@@ -195,7 +196,7 @@ class my_sql_database(MysqlDatabase):
             yield self._to_bar_data(db_bar)
 
         if not found:
-            print(f"Warning: no data found for {symbol} between {start} and {end}")
+            logging.warning("no data found for %s between %s and %s", symbol, start, end)
 
     def init_realtime_buffer(
         self,
@@ -219,10 +220,11 @@ class my_sql_database(MysqlDatabase):
         recent_bars = [self._to_bar_data(db_bar) for db_bar in s.iterator()]
         recent_bars.reverse()
         if not recent_bars:
-            print(f"Warning: no data found for {symbol} between {start_dt} and {end_dt}")
+            logging.warning("no data found for %s between %s and %s", symbol, start_dt, end_dt)
 
         buffer: deque[BarDataV2] = deque(recent_bars, maxlen=self.buffer_size)
-        self._realtime_buffer[symbol] = buffer
+        buf_key = (symbol, exchange.value, interval.value)
+        self._realtime_buffer[buf_key] = buffer
         return buffer
 
     def append_kline(
@@ -231,7 +233,8 @@ class my_sql_database(MysqlDatabase):
         if symbol != kline.symbol:
             raise ValueError(f"symbol={symbol} does not match kline.symbol={kline.symbol}")
 
-        if symbol not in self._realtime_buffer:
+        buf_key = (symbol, kline.exchange.value, kline.interval.value)
+        if buf_key not in self._realtime_buffer:
             self.init_realtime_buffer(
                 symbol=symbol,
                 exchange=kline.exchange,
@@ -240,8 +243,8 @@ class my_sql_database(MysqlDatabase):
                 end=kline.datetime,
             )
 
-        self._realtime_buffer[symbol].append(kline)
-        return self._realtime_buffer[symbol]
+        self._realtime_buffer[buf_key].append(kline)
+        return self._realtime_buffer[buf_key]
 
     def load_bar_data(
         self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime

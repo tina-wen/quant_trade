@@ -10,11 +10,11 @@ from vnpy_adaptor import BarDataV2, my_sql_database
 
 price_cols = ["datetime", "open_price", "high_price", "close_price", "low_price", "settle_price"]
 
-freq_dict = {
-    "周": Interval.WEEKLY,
-    "分钟": Interval.MINUTE,
-    "日线": Interval.DAILY,
-    "小时": Interval.HOUR,
+INTERVAL_ALIASES = {
+    "m": Interval.MINUTE.value,
+    "h": Interval.HOUR.value,
+    "d": Interval.DAILY.value,
+    "w": Interval.WEEKLY.value,
 }
 Ex_dict = {"SHFE": Exchange.SHFE, "INE": Exchange.INE, "DCE": Exchange.DCE, "CZCE": Exchange.CZCE}
 EXCHANGE_ALIAS_MAP = {
@@ -54,6 +54,15 @@ def normalize_exchange(code: str, exchange: Exchange | str | None = None) -> Exc
     if isinstance(inferred_exchange, str):
         return _to_exchange(inferred_exchange)
     return inferred_exchange
+
+
+def normalize_interval(interval: Interval | str) -> Interval:
+    """Normalize user input into vn.py Interval values such as 1m, 1h, d, and w."""
+    if isinstance(interval, Interval):
+        return interval
+
+    normalized_value = INTERVAL_ALIASES.get(interval.strip().lower(), interval.strip().lower())
+    return Interval(normalized_value)
 
 
 class Cache:
@@ -109,8 +118,7 @@ def get_price_by_code(
     exchange: Exchange | str | None = None,
 ):
     exchange = normalize_exchange(code, exchange)
-    if isinstance(interval, str):
-        interval = freq_dict.get(interval, Interval.DAILY)
+    interval = normalize_interval(interval)
     data_query = get_db_query()
     bar_batches = data_query.load_bar_data(
         symbol=code, exchange=exchange, start=start_time, end=end_time, interval=interval
@@ -257,8 +265,7 @@ def fake_stream(
     if resolved_exchange is None:
         raise ValueError("exchange is required (provide exchange or inferable symbol)")
 
-    if isinstance(interval, str):
-        interval = freq_dict.get(interval, Interval.MINUTE)
+    interval = normalize_interval(interval)
 
     if start_price is None:
         start_price = 100.0
@@ -268,7 +275,14 @@ def fake_stream(
 
     query = db_query or get_db_query()
     current_price = float(start_price)
-    step = timedelta(minutes=interval_minutes)
+    if interval == Interval.DAILY:
+        step = timedelta(days=1)
+    elif interval == Interval.WEEKLY:
+        step = timedelta(weeks=1)
+    elif interval == Interval.HOUR:
+        step = timedelta(hours=1)
+    else:
+        step = timedelta(minutes=interval_minutes)
     current_time = start_time or (datetime.now() - step * num_klines)
 
     for _ in range(num_klines):
