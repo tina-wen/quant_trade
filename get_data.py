@@ -1,19 +1,20 @@
-from datetime import datetime
+import random
+from datetime import datetime, timedelta
 from functools import lru_cache
-from typing import Dict
+from typing import Dict, Iterator, Optional
 
 import pandas as pd
 from vnpy.trader.constant import Exchange, Interval
 
-from vnpy_adaptor import my_sql_database
+from vnpy_adaptor import BarDataV2, my_sql_database
 
 price_cols = ["datetime", "open_price", "high_price", "close_price", "low_price", "settle_price"]
 
-freq_dict = {
-    "周": Interval.WEEKLY,
-    "分钟": Interval.MINUTE,
-    "日线": Interval.DAILY,
-    "小时": Interval.HOUR,
+INTERVAL_ALIASES = {
+    "m": Interval.MINUTE.value,
+    "h": Interval.HOUR.value,
+    "d": Interval.DAILY.value,
+    "w": Interval.WEEKLY.value,
 }
 Ex_dict = {"SHFE": Exchange.SHFE, "INE": Exchange.INE, "DCE": Exchange.DCE, "CZCE": Exchange.CZCE}
 EXCHANGE_ALIAS_MAP = {
@@ -29,7 +30,7 @@ def _to_exchange(exchange_code: str) -> Exchange:
         try:
             return Exchange[normalized_code]
         except KeyError as exc:
-            raise ValueError(f"不支持的交易所: {exchange_code}") from exc
+            raise ValueError(f"Unsupported exchange: {exchange_code}") from exc
 
 
 @lru_cache(maxsize=1)
@@ -55,6 +56,15 @@ def normalize_exchange(code: str, exchange: Exchange | str | None = None) -> Exc
     return inferred_exchange
 
 
+def normalize_interval(interval: Interval | str) -> Interval:
+    """Normalize user input into vn.py Interval values such as 1m, 1h, d, and w."""
+    if isinstance(interval, Interval):
+        return interval
+
+    normalized_value = INTERVAL_ALIASES.get(interval.strip().lower(), interval.strip().lower())
+    return Interval(normalized_value)
+
+
 class Cache:
     _cache: Dict[str, any] = {}
 
@@ -62,20 +72,16 @@ class Cache:
     def call(cls, func, code: str, trade_date: datetime, key: str = "times", **kwargs):
         if code + "_" + key in cls._cache:
             return cls._cache[code + "_" + key]
-        # 首次调用，执行 func 并缓存
+        # Execute and cache on first call.
         result = func(code, trade_date, key, **kwargs)
         cls._cache[code + "_" + key] = result
         return result
 
 
 def get_overview_df():
-    data_query = get_db_query()
-    list_bar_overview = [x.__dict__["__data__"] for x in data_query.get_bar_overview()]
-    overview_df = pd.DataFrame.from_records(list_bar_overview)
-    return overview_df
+    return get_db_query().get_overview_df()
 
 
-# 获取合约结算信息
 def get_contract_info(code: str, trade_date: datetime, key: str, price: float = None):
     code = code.split(".")[0]
     trade_date = trade_date.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -83,19 +89,18 @@ def get_contract_info(code: str, trade_date: datetime, key: str, price: float = 
     contr = data_query.load_contr_info(symbol=code, start=trade_date, end=trade_date)
     if len(contr) == 0:
         raise KeyError(
-            f"合约{code}:{trade_date.strftime('%Y-%m-%d')}不是交易日或数据库中没有{trade_date.strftime('%Y-%m-%d')}的合约结算数据"
+            f"Contract {code}: no settlement data found for {trade_date.strftime('%Y-%m-%d')} "
+            "(non-trading day or missing in database)"
         )
     contr_dict = contr[0].__dict__
 
-    ### 保证金和手续费的计算封装，不暴露原始数据
-    # 计算保证金占用，入参key必含'margin'
+    # Expose derived margin/fee values instead of raw fields.
     if "margin" in key:
         margin = contr_dict.get(key, None)
         if price and margin < 1:
             return margin * price
         return margin
 
-    # 计算手续费，入参key必含'fee'
     if key == "today_offset_fee":
         return contr_dict.get(key, None)
     if key == "fee":
@@ -105,7 +110,6 @@ def get_contract_info(code: str, trade_date: datetime, key: str, price: float = 
     return contr_dict[key]
 
 
-# 基于合约代码，从数据库读取一段时期的K线价格，并以dataframe格式返回
 def get_price_by_code(
     code: str,
     start_time: datetime,
@@ -114,19 +118,23 @@ def get_price_by_code(
     exchange: Exchange | str | None = None,
 ):
     exchange = normalize_exchange(code, exchange)
-    if isinstance(interval, str):
-        interval = freq_dict.get(interval, Interval.DAILY)
+    interval = normalize_interval(interval)
     data_query = get_db_query()
-    list_bar = data_query.load_bar_data(
+    bar_batches = data_query.load_bar_data(
         symbol=code, exchange=exchange, start=start_time, end=end_time, interval=interval
     )
-    data = pd.DataFrame.from_records([x.__dict__ for x in list_bar])
+
+    rows = []
+    for chunk in bar_batches:
+        rows.extend(x.__dict__ for x in chunk)
+
+    data = pd.DataFrame.from_records(rows)
     if len(data) == 0:
         start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
         end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
         raise KeyError(
-            f"本地数据库中没有{code}合约在{start_str}到{end_str}的数据，"
-            "请核对时间范围或自行下载写入"
+            f"No local database data for contract {code} between {start_str} and {end_str}. "
+            "Please verify the time range or download and store the data first."
         )
     price_df = data[price_cols].set_index("datetime")
     return price_df
@@ -143,11 +151,9 @@ class DataQuery:
         exchange: Exchange | str | None = None,
     ):
         code = code.split(".")[0]
-        self.code = code  # 合约代码
+        self.code = code
         self.exchange = normalize_exchange(code, exchange)
-        price_df = get_price_by_code(
-            code, start_time, end_time, interval, self.exchange
-        )  # 完整的单合约的价格序列，符合一般量价数据格式，包括开收高低、结算价等
+        price_df = get_price_by_code(code, start_time, end_time, interval, self.exchange)
         self.trade_days = price_df.index.tolist()
         price_df.columns = [x.replace("_price", "") for x in price_df.columns]
         self.price = price_df
@@ -166,9 +172,130 @@ class DataQuery:
                 ],
             )
         )
-        if target is not None:
-            self.target_price = self.price[target]
-            self.close_price = self.target_price.tolist()
+        self.target_price = self.price[target] if target is not None else self.price["close"]
+        self.close_price = self.target_price.tolist()
 
     def _get_price_by_key(self, key: str):
         return self.price[key]
+
+    @classmethod
+    def from_price_df(
+        cls,
+        price_df: pd.DataFrame,
+        code: str,
+        exchange: Exchange,
+        interval: Interval,
+        target: str | None = None,
+    ) -> "DataQuery":
+        """Build a DataQuery from a prebuilt price DataFrame, bypassing the database.
+
+        price_df must be indexed by datetime with columns: open, high, low, close, settle.
+        """
+        obj = cls.__new__(cls)
+        obj.code = code
+        obj.exchange = exchange
+        obj.trade_days = price_df.index.tolist()
+        obj.price = price_df
+        obj.settle_price = price_df["settle"]
+        obj.open_price = price_df["open"].tolist()
+        obj.high_price = price_df["high"].tolist()
+        obj.low_price = price_df["low"].tolist()
+        obj.target_price = price_df[target] if target is not None else price_df["close"]
+        obj.close_price = obj.target_price.tolist()
+        return obj
+
+
+def generate_fake_kline(
+    symbol: str,
+    exchange: Exchange,
+    interval: Interval,
+    base_price: float = 100.0,
+    volatility: float = 0.02,
+    current_time: Optional[datetime] = None,
+) -> BarDataV2:
+    """Generate one synthetic BarDataV2 for realtime simulation."""
+    dt = current_time or datetime.now()
+    change_pct = random.uniform(-volatility, volatility)
+    close_price = base_price * (1 + change_pct)
+    high_price = max(base_price, close_price) * (1 + random.uniform(0, volatility * 0.5))
+    low_price = min(base_price, close_price) * (1 - random.uniform(0, volatility * 0.5))
+    open_price = base_price
+    volume = float(random.randint(100_000, 10_000_000))
+
+    return BarDataV2(
+        symbol=symbol,
+        exchange=exchange,
+        interval=interval,
+        datetime=dt,
+        open_price=round(open_price, 6),
+        high_price=round(high_price, 6),
+        low_price=round(low_price, 6),
+        close_price=round(close_price, 6),
+        settle_price=round(close_price, 6),
+        volume=volume,
+        turnover=round(close_price * volume, 6),
+        open_interest=0.0,
+        gateway_name="FAKE",
+    )
+
+
+def fake_stream(
+    data_query: DataQuery | None = None,
+    symbol: str | None = None,
+    exchange: Exchange | str | None = None,
+    interval: str | Interval = Interval.MINUTE,
+    start_price: float | None = None,
+    num_klines: int = 100,
+    interval_minutes: int = 1,
+    volatility: float = 0.02,
+    start_time: datetime | None = None,
+    db_query: my_sql_database | None = None,
+) -> Iterator[BarDataV2]:
+    """Yield synthetic bars and append each one via append_kline for simulation."""
+    if data_query is not None:
+        symbol = symbol or data_query.code
+        exchange = exchange or data_query.exchange
+        if start_price is None:
+            start_price = float(data_query.close_price[-1])
+
+    if not symbol:
+        raise ValueError("symbol is required (provide symbol or data_query)")
+
+    resolved_exchange = normalize_exchange(symbol, exchange)
+    if resolved_exchange is None:
+        raise ValueError("exchange is required (provide exchange or inferable symbol)")
+
+    interval = normalize_interval(interval)
+
+    if start_price is None:
+        start_price = 100.0
+
+    if num_klines <= 0:
+        return
+
+    query = db_query or get_db_query()
+    current_price = float(start_price)
+    if interval == Interval.DAILY:
+        step = timedelta(days=1)
+    elif interval == Interval.WEEKLY:
+        step = timedelta(weeks=1)
+    elif interval == Interval.HOUR:
+        step = timedelta(hours=1)
+    else:
+        step = timedelta(minutes=interval_minutes)
+    current_time = start_time or (datetime.now() - step * num_klines)
+
+    for _ in range(num_klines):
+        kline = generate_fake_kline(
+            symbol=symbol,
+            exchange=resolved_exchange,
+            interval=interval,
+            base_price=current_price,
+            volatility=volatility,
+            current_time=current_time,
+        )
+        query.append_kline(symbol, kline)
+        yield kline
+
+        current_price = kline.close_price
+        current_time = current_time + step

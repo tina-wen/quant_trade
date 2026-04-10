@@ -103,6 +103,47 @@ uv run streamlit run app/HomePage.py
 | `abs` | `--level` |
 | `mr` | `--lag`, `--threshold` |
 
+## 回测流程（Backtest Flow）
+
+下图对应 scripts/backtest_exec.py 的主流程，用来说明回测中“数据输入 -> 信号生成 -> 交易执行 -> 绩效输出”的链路。
+
+```mermaid
+flowchart TB
+  A[启动回测<br/>scripts/backtest_exec.py] --> B[创建账户<br/>acc_stats]
+  B --> C[加载行情<br/>DataQuery]
+  C --> D[生成信号<br/>get_signal]
+  D --> E[封装报单<br/>TradeOrder]
+  E --> F[回测主循环<br/>trade_simulation.backtest]
+
+  subgraph LOOP[逐日处理 trade_days]
+    F1[止损检查<br/>do_stop_loss] --> F2[按信号开平仓<br/>open_pos / close_pos]
+    F2 --> F3[盯市结算<br/>MTM + 记录余额]
+  end
+
+  F --> F1
+  F3 --> G[绩效统计<br/>calc_performances]
+  G --> H[输出<br/>perf_dict + pnl]
+
+  C -.-> X1[(price / target_price / trade_days)]
+  D -.-> X2[(signal 序列)]
+  F3 -.-> X3[(daily_balances)]
+  F2 -.-> X4[(close_trade_items)]
+  X3 --> G
+  X4 --> G
+
+  classDef s1 fill:#E8F1FF,stroke:#3B82F6,color:#0F172A;
+  classDef s2 fill:#ECFDF5,stroke:#10B981,color:#0F172A;
+  classDef s3 fill:#FFF7ED,stroke:#F59E0B,color:#0F172A;
+  classDef s4 fill:#FFE4E6,stroke:#E11D48,color:#0F172A;
+  classDef data fill:#FFFFFF,stroke:#94A3B8,stroke-dasharray:4 3,color:#334155;
+
+  class A,B s1;
+  class C,D,E s2;
+  class F,F1,F2,F3 s4;
+  class G,H s3;
+  class X1,X2,X3,X4 data;
+```
+
 ## 演示
 
 - 数据写入页面：https://github.com/user-attachments/assets/f7a9627a-bb17-4336-8acd-0cdf18773ce8

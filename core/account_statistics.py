@@ -50,7 +50,8 @@ class trade_items:
     def close_trade(self, close_price, direction, date):
         if direction == self.direction:
             raise ValueError(
-                f"平仓方向不对：当前合约{self.code}持仓为{self.direction}，不支持{direction}的平仓动作"
+                f"Invalid close direction: contract {self.code} position is {self.direction}, "
+                f"close direction {direction} is not allowed"
             )
         times = Cache.call(get_contract_info, self.code, date, "times")
         if self.direction == "short":
@@ -86,7 +87,7 @@ class acc_stats:
             logging.basicConfig(
                 filename=os.path.join(log_dir, get_log_name(shares)), level=logging.INFO
             )
-            logging.info(f"用户{self.usr}已注册，初始资金为{init_funds}")
+            logging.info(f"User {self.usr} registered with initial funds {init_funds}")
 
     def get_total_margin(self):
         """
@@ -128,9 +129,10 @@ class acc_stats:
             self.open_trade_items[code] = deque([trade_item])
         ###TODO:记录日志###
         logging.info(
-            f"交易日{time.strftime('%Y%m%d')}，合约{code}开仓1手，方向为{direction}，开仓价为{price}，手续费为{commission_fee}，保证金占用{margin}"
+            f"Trade day {time.strftime('%Y%m%d')}: opened 1 lot of {code}, direction={direction}, "
+            f"open_price={price}, commission={commission_fee}, margin={margin}"
         )
-        logging.info(f"账户权益为{self.balance}，当前账户流动资金为{self.funds}")
+        logging.info(f"Account equity={self.balance}, available funds={self.funds}")
 
     def get_target_close_trade(self, code, direction):
         """
@@ -140,7 +142,7 @@ class acc_stats:
         ### 首先找出要平仓的交易单
         if len(self.open_trade_items[code]) == 0:
             logging.error(f"当前没有合约{code}的持仓！")
-            raise KeyError(f"当前没有合约{code}的持仓！")
+            raise KeyError(f"No open position found for contract {code}.")
         tmp_open_trade = self.open_trade_items[code].popleft()
         return tmp_open_trade
 
@@ -170,9 +172,10 @@ class acc_stats:
 
         #### 记录交易日志
         logging.info(
-            f"交易日{time.strftime('%Y%m%d')}，合约{code}平仓1手，方向为{direction}，平仓价为{price}，该笔交易盈利{profit}，手续费为{commission_fee}"
+            f"Trade day {time.strftime('%Y%m%d')}: closed 1 lot of {code}, direction={direction}, "
+            f"close_price={price}, trade_profit={profit}, commission={commission_fee}"
         )
-        logging.info(f"当前账户权益为{self.balance}，账户流动资金为{self.funds}")
+        logging.info(f"Current account equity={self.balance}, available funds={self.funds}")
 
     # 逐日盯市函数
     def MTM(self, limit, cur_trade_day: datetime):
@@ -190,7 +193,8 @@ class acc_stats:
                     trade.prev_set_price = settle_price
         ###日志记录逐日盯市后结算的账户权益
         logging.info(
-            f"交易日{cur_trade_day.strftime('%Y%m%d')}的账户权益为{self.balance}，流动资金为{self.funds}，总保证金占用为{self.get_total_margin()}"
+            f"Trade day {cur_trade_day.strftime('%Y%m%d')}: equity={self.balance}, "
+            f"available_funds={self.funds}, total_margin={self.get_total_margin()}"
         )
         if self.balance < limit:
             logging.warning(f"账户权益为{self.balance}，已低于最低要求{limit}，请追加保证金！")

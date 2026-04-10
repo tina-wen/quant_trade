@@ -3,7 +3,7 @@ from datetime import timedelta
 import holidays
 import pandas as pd
 
-from get_data import DataQuery, freq_dict
+from get_data import DataQuery, normalize_interval
 
 from .account_statistics import acc_stats
 
@@ -25,9 +25,7 @@ def signal2dir(signal):
 
 
 class TradeOrder:
-    """
-    成交报单类
-    """
+    """Trade order container for simulation input."""
 
     def __init__(self, signal, prices, code: str, interval: str, stop_loss, n_shares):
         self.signal = signal.tolist()
@@ -36,10 +34,7 @@ class TradeOrder:
         self.time = time
         self.prices = prices.tolist()
         self.code = code
-        if isinstance(interval, str):
-            self.interval = freq_dict.get(interval, interval)
-        else:
-            self.interval = interval
+        self.interval = normalize_interval(interval)
         self.stop_loss = stop_loss
         self.shares = n_shares
 
@@ -49,23 +44,18 @@ class trade_simulation:
         self,
         account: acc_stats,
     ):
-        # mode指回测或实盘模拟
         self.account = account
 
     def backtest(self, trade_order: TradeOrder, margin_call, data_query: DataQuery):
-        # 每日权益，字典，key为日期，value为当日账户权益
         daily_balances = {}
 
-        # 交易日（结算日）的索引、交易信号的索引、交易日期（结算日期）
         no_day, index_signal = 0, 0
         day = data_query.trade_days[no_day]
-        # 外层按照交易日循环，便于逐日盯视
         if_stop_loss = False
 
         while no_day < len(data_query.trade_days):
             day = data_query.trade_days[no_day]
 
-            # 对现有持仓止损
             if not if_stop_loss:
                 open_price, high_price, low_price, close_price = (
                     data_query.open_price[no_day],
@@ -86,16 +76,13 @@ class trade_simulation:
                         close_price,
                     )
 
-            # 当天发生交易
             cur_time, signal, price = (
                 trade_order.time[index_signal],
                 trade_order.signal[index_signal],
                 trade_order.prices[index_signal],
             )
             while cur_time.date() <= day.date():
-                # 如果之前发生了止损，且止损时仓位方向和信号一样，跳过该交易信号不执行
                 if signal != signal:
-                    # 按照交易信号往前遍历
                     index_signal += 1
                     if index_signal == len(trade_order.signal):
                         break
@@ -105,9 +92,7 @@ class trade_simulation:
                         trade_order.prices[index_signal],
                     )
                     continue
-                # 正常执行交易信号，拨回是否发生止损状态
                 n, direction = self.account.get_position_by_code(trade_order.code)
-                # 当前账户标的合约无持仓，且交易信号不为空仓
                 if (
                     direction is None
                     and signal
@@ -122,8 +107,6 @@ class trade_simulation:
                             cur_time,
                         )
                     if_stop_loss = False
-                # 当前持仓和信号方向不一致时，先平仓（方向与当前持仓相反）。
-                # 若信号方向不是0，则再按新方向开仓。
                 elif direction != signal2dir(signal):
                     close_dir = "long" if direction == "short" else "short"
                     for _ in range(n):
@@ -139,11 +122,9 @@ class trade_simulation:
                                 trade_order.code, price, close_dir, trade_order.stop_loss, cur_time
                             )
                             if not res:
-                                # 如果开仓失败，跳出循环，等待下一交易信号
                                 if_stop_loss = True
                                 break
                         if_stop_loss = False
-                # 按照交易信号往前遍历
                 index_signal += 1
                 if index_signal == len(trade_order.signal):
                     break
@@ -153,7 +134,6 @@ class trade_simulation:
                     trade_order.prices[index_signal],
                 )
 
-            # 当天盯市结算
             self.account.MTM(margin_call, day)
             daily_balances[day] = {"balance": self.account.balance}
             no_day += 1
@@ -172,7 +152,7 @@ class trade_simulation:
 
         pnl = pd.DataFrame.from_dict(daily_balances, orient="index")
         pnl.sort_index(inplace=True)
-        # 根据pnl计算年化收益、夏普比率、最大回撤
+        # Compute annual return, Sharpe ratio, and max drawdown.
         pnl["daily_profit"] = pnl["balance"].diff()
 
         self.pnl = pnl
@@ -182,7 +162,7 @@ class trade_simulation:
         sharpe_ratio = (annual_ret - risk_free_rate) / annual_vol
         max_drawdown = max(1 - pnl["balance"] / pnl["balance"].cummax())
 
-        # 根据所有成交单计算胜率
+        # Compute win rate and profit/loss ratio from closed trades.
         n_trades, n_win_trades = 0, 0
         gain, loss = 0, 0
         for code, trades in self.account.close_trade_items.items():

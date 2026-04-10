@@ -2,26 +2,22 @@ import argparse
 
 
 def parse_mixed_value(value):
-    """根据值的内容解析为不同的类型（浮点型、字符串和None）"""
-    if value.lower() == "none":  # 如果是 'None' 或 'none'，将其转换为 None
+    """Parse CLI value into float, string, or None."""
+    if value.lower() == "none":
         return None
     try:
-        # 尝试转换为浮点数
         return float(value)
     except ValueError:
-        # 如果无法转换为浮点数，返回原始字符串
         return value
 
 
 def get_args(argv=None):
     parser = argparse.ArgumentParser(description="")
 
-    # 账户创建相关参数
     parser.add_argument("--usr_name", type=str, default="demo", help="usr_name")
     parser.add_argument("--init_fund", type=float, default=1000000, help="init_funds")
     parser.add_argument("--margin_call", type=float, default=100000.00)
 
-    # 开仓相关参数
     parser.add_argument("--code", type=str, required=True, help="contract code")
 
     parser.add_argument("--target", type=str, default="open")
@@ -43,7 +39,6 @@ def get_args(argv=None):
 
     parser.add_argument("--stop_loss", type=float, default=0.1)
 
-    # 交易策略指定
     parser.add_argument("--input_mode", type=str, default="in")
     parser.add_argument(
         "--trade_strategy",
@@ -58,10 +53,31 @@ def get_args(argv=None):
     parser.add_argument("--lbr", type=float, default=0.25)
     parser.add_argument("--level", type=float, default=4500.00)
 
-    # 交易日志
+    parser.add_argument("--log_dir", type=str)
+
     parser.add_argument(
-        "--log_dir",
+        "--sim",
+        action="store_true",
+        default=False,
+        help="Run in simulation mode using fake_stream instead of the database",
+    )
+    parser.add_argument(
+        "--sim_num_klines",
+        type=int,
+        default=200,
+        help="Number of synthetic bars to generate in simulation mode",
+    )
+    parser.add_argument(
+        "--sim_volatility",
+        type=float,
+        default=0.02,
+        help="Per-bar price volatility in simulation mode",
+    )
+    parser.add_argument(
+        "--interval",
         type=str,
+        default="d",
+        help="Bar interval in vn.py format (e.g. d, w, 1m, 1h)",
     )
     args = parser.parse_args(argv)
 
