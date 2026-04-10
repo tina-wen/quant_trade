@@ -160,3 +160,22 @@ flowchart TB
 欢迎提 Issue / PR / Star。
 
 项目地址：https://github.com/tina-wen/quant_trade
+
+## 常见问题（Troubleshooting）
+
+### 1. 时区比较报错
+
+- 现象：`TypeError: can't compare offset-naive and offset-aware datetimes`
+- 原因：行情时间（可能带时区）与交易时段窗口（本地无时区时间）直接比较。
+- 处理：在 `get_data.py` 中统一归一化时间（先转本地交易时区，再去除时区信息）。
+
+### 2. 夜盘跨日导致交易日归属变化
+
+- 夜盘品种（如铜）在凌晨的 bar 时间可能归属前一交易日的夜盘。
+- 以 `resolve_trade_date` 的映射结果为准，再进行止损/结算/绩效计算。
+
+### 3. 结算信息缺失
+
+- 现象：`no settlement data found for YYYY-MM-DD`
+- 原因：合约信息表在目标交易日缺失记录。
+- 处理：优先查当日，若缺失则回退到最近可用日（lookback 窗口）继续计算。
