@@ -187,6 +187,7 @@ class trade_simulation:
                     gain += profit
                 elif profit < 0:
                     loss -= profit
+        assert n_trades > 0, "没有完成过任何交易，无法计算胜率和盈亏比"
         winning_rat, profit2loss = n_win_trades / n_trades, gain / loss
         perf_msg = (
             f"用户{self.account.usr}本次模拟的年化收益：{annual_ret:.2%}，"

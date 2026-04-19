@@ -70,6 +70,7 @@ class acc_stats:
         shares: int,
         usr_name: str | None = None,
         log_dir: str | None = None,
+        slippage: float = 0.0,
     ):
         # 流动资金和权益，权益和现金的不同发生在逐日盯市和交易结算时
         self.init_bal = init_funds
@@ -79,6 +80,7 @@ class acc_stats:
         self.open_trade_items = {}
         ###已平仓交易单
         self.close_trade_items = {}
+        self.slippage = slippage
         self.usr = usr_name if usr_name is not None else "default_user"
         # 记录日志
         if log_dir is not None:
@@ -114,6 +116,11 @@ class acc_stats:
         return n, direction
 
     def open_pos(self, code: str, price: float, direction: str, stop_loss: tuple, time):
+        # 买入时加上滑点（做多加价，做空减价）
+        if direction == "long":
+            price = price * (1 + self.slippage)
+        elif direction == "short":
+            price = price * (1 - self.slippage)
         # 判断能否开仓
         trade_item = trade_items(code, price, direction, stop_loss, time)
         margin, commission_fee = trade_item.margin, trade_item.get_trade_commission(price, time)
@@ -151,6 +158,11 @@ class acc_stats:
         """
         对指定的某笔交易target_trade平仓
         """
+        # 平仓时扣除滑点（平多减价，平空加价）
+        if direction == "short":
+            price = price * (1 - self.slippage)
+        elif direction == "long":
+            price = price * (1 + self.slippage)
         margin, commission_fee = target_trade.margin, target_trade.get_trade_commission(price, time)
         self.funds += margin - commission_fee
         target_trade.close_trade(price, direction, time)

@@ -38,6 +38,9 @@ def get_args(argv=None):
     parser.add_argument("--shares", type=int, default=1)
 
     parser.add_argument("--stop_loss", type=float, default=0.1)
+    parser.add_argument(
+        "--slippage", type=float, default=0.0, help="滑点，买入加价、卖出减价（价格单位）"
+    )
 
     parser.add_argument("--input_mode", type=str, default="in")
     parser.add_argument(
