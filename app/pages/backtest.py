@@ -62,6 +62,27 @@ margin_call = st.number_input("保证金追保线（默认为初始资金*0.1）
 shares = st.number_input("交易手数", min_value=1, value=1)
 # 止损设置
 stop_loss = st.number_input("止损设置（例如：0.05 或 1000）", value=0.05)
+# 滑点设置
+slippage = st.number_input(
+    "滑点百分比（买入加价/卖出减价，例如 0.001 表示 0.1%）", min_value=0.0, value=0.0, format="%f"
+)
+# ─ 风控设置 ─
+with st.expander("风控参数"):
+    max_daily_drawdown = st.number_input(
+        "日内最大回撤熔断阈值（超过则当日禁止开仓，例如 0.1 表示 10%）",
+        min_value=0.01,
+        max_value=1.0,
+        value=0.1,
+        format="%f",
+    )
+    max_position_per_code = st.number_input("单品种最大持仓手数", min_value=1, value=10)
+    min_balance_ratio = st.number_input(
+        "账户权益最低比例（低于初始资金此比例禄止开仓，例如 0.1 表示 10%）",
+        min_value=0.0,
+        max_value=1.0,
+        value=0.1,
+        format="%f",
+    )
 # 交易日志.log存放路径
 log_dir = st.text_input("交易日志存放路径", value="./logs")
 
@@ -98,7 +119,16 @@ if st.button("开始回测"):
     from get_data import DataQuery
     from signals import get_signal
 
-    test_account = acc_stats(init_fund, shares, usr_name="demo", log_dir=log_dir)
+    test_account = acc_stats(
+        init_fund,
+        shares,
+        usr_name="demo",
+        log_dir=log_dir,
+        slippage=slippage,
+        max_daily_drawdown=max_daily_drawdown,
+        max_position_per_code=int(max_position_per_code),
+        min_balance_ratio=min_balance_ratio,
+    )
     data_query = DataQuery(code, start, end, interval, target=target)
     # todo: 未来需要支持.csv格式文件拖拽上传后处理成统一信号格式
 
@@ -177,7 +207,16 @@ if st.button("开始模拟"):
 
     sim_data_query = _DQ.from_price_df(price_df, code, exchange_enum, interval_enum, target=target)
 
-    sim_account = acc_stats(init_fund, shares, usr_name="sim", log_dir=log_dir)
+    sim_account = acc_stats(
+        init_fund,
+        shares,
+        usr_name="sim",
+        log_dir=log_dir,
+        slippage=slippage,
+        max_daily_drawdown=max_daily_drawdown,
+        max_position_per_code=int(max_position_per_code),
+        min_balance_ratio=min_balance_ratio,
+    )
     signal = _get_signal(trade_strategy, config, sim_data_query)
     sim_trade_order = TradeOrder(
         signal, sim_data_query.target_price, code, interval_enum, stop_loss, shares

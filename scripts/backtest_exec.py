@@ -9,7 +9,16 @@ from signals import get_signal
 
 def run_backtest(data_query: DataQuery, args) -> trade_simulation:
     """Run the full backtest pipeline on a DataQuery and return the simulation result."""
-    account = acc_stats(args.init_fund, args.shares, usr_name=args.usr_name, log_dir=args.log_dir)
+    account = acc_stats(
+        args.init_fund,
+        args.shares,
+        usr_name=args.usr_name,
+        log_dir=args.log_dir,
+        slippage=args.slippage,
+        max_daily_drawdown=args.max_daily_drawdown,
+        max_position_per_code=args.max_position_per_code,
+        min_balance_ratio=args.min_balance_ratio,
+    )
     signal = get_signal(args.trade_strategy, args.config, data_query)
     trade_order = TradeOrder(
         signal, data_query.target_price, args.code, args.interval, args.stop_loss, args.shares

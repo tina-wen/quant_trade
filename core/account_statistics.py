@@ -70,6 +70,10 @@ class acc_stats:
         shares: int,
         usr_name: str | None = None,
         log_dir: str | None = None,
+        slippage: float = 0.0,
+        max_daily_drawdown: float = 0.1,
+        max_position_per_code: int = 10,
+        min_balance_ratio: float = 0.1,
     ):
         # 流动资金和权益，权益和现金的不同发生在逐日盯市和交易结算时
         self.init_bal = init_funds
@@ -79,6 +83,18 @@ class acc_stats:
         self.open_trade_items = {}
         ###已平仓交易单
         self.close_trade_items = {}
+        self.slippage = slippage
+        # ── 风控参数 ──
+        # 单日最大回撤比例（超过则当日禁止开新仓），默认10%
+        self.max_daily_drawdown = max_daily_drawdown
+        # 单品种最大持仓手数，默认10手
+        self.max_position_per_code = max_position_per_code
+        # 账户权益低于初始资金此比例时禁止开新仓，默认10%
+        self.min_balance_ratio = min_balance_ratio
+        # 每日开盘时记录当日起始权益（由 MTM 或首次开仓时更新）
+        self._daily_open_balance: float = init_funds
+        # 当日是否已触发回撤熔断
+        self._daily_halt: bool = False
         self.usr = usr_name if usr_name is not None else "default_user"
         # 记录日志
         if log_dir is not None:
@@ -114,6 +130,39 @@ class acc_stats:
         return n, direction
 
     def open_pos(self, code: str, price: float, direction: str, stop_loss: tuple, time):
+        # 买入时加上滑点（做多加价，做空减价）
+        if direction == "long":
+            price = price * (1 + self.slippage)
+        elif direction == "short":
+            price = price * (1 - self.slippage)
+        # ── 风控检查 ──
+        # 1. 日内回撤熔断
+        if self._daily_halt:
+            logging.warning(f"{time} 日内回撤熔断已触发，拒绝开仓 {code}")
+            return False
+        drawdown = (self._daily_open_balance - self.balance) / self._daily_open_balance
+        if drawdown >= self.max_daily_drawdown:
+            self._daily_halt = True
+            logging.warning(
+                f"{time} 日内回撤 {drawdown:.2%} 超过阈值 {self.max_daily_drawdown:.2%}，"
+                f"触发熔断，当日禁止开新仓"
+            )
+            return False
+        # 2. 单品种最大持仓
+        current_pos = len(self.open_trade_items.get(code, []))
+        if current_pos >= self.max_position_per_code:
+            logging.warning(
+                f"{time} {code} 持仓 {current_pos} 手已达上限 "
+                f"{self.max_position_per_code}，拒绝开仓"
+            )
+            return False
+        # 3. 账户最低权益下限
+        if self.balance < self.init_bal * self.min_balance_ratio:
+            logging.warning(
+                f"{time} 账户权益 {self.balance:.2f} 低于最低要求 "
+                f"{self.init_bal * self.min_balance_ratio:.2f}，拒绝开仓"
+            )
+            return False
         # 判断能否开仓
         trade_item = trade_items(code, price, direction, stop_loss, time)
         margin, commission_fee = trade_item.margin, trade_item.get_trade_commission(price, time)
@@ -151,6 +200,11 @@ class acc_stats:
         """
         对指定的某笔交易target_trade平仓
         """
+        # 平仓时扣除滑点（平多减价，平空加价）
+        if direction == "short":
+            price = price * (1 - self.slippage)
+        elif direction == "long":
+            price = price * (1 + self.slippage)
         margin, commission_fee = target_trade.margin, target_trade.get_trade_commission(price, time)
         self.funds += margin - commission_fee
         target_trade.close_trade(price, direction, time)
@@ -196,6 +250,9 @@ class acc_stats:
             f"Trade day {cur_trade_day.strftime('%Y%m%d')}: equity={self.balance}, "
             f"available_funds={self.funds}, total_margin={self.get_total_margin()}"
         )
+        # 每日 MTM 后重置当日基准权益和熔断状态
+        self._daily_open_balance = self.balance
+        self._daily_halt = False
         if self.balance < limit:
             logging.warning(f"账户权益为{self.balance}，已低于最低要求{limit}，请追加保证金！")
 
