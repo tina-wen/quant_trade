@@ -11,3 +11,5 @@ venv/
 *.log
 database_config.json
 config/database_config.json
+broker_config.json
+config/broker_config.json

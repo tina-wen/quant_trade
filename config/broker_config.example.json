@@ -1,0 +1,48 @@
+{
+  "_comment": "将本文件复制为 broker_config.json，填写对应 gateway 的账号信息。",
+  "_comment2": "gateway 字段指定当前使用哪种接入方式，只有对应 section 会被读取。",
+  "gateway": "CTP",
+
+  "CTP": {
+    "_comment": "适用于国内期货（上期/中金/大商/郑商所）。SimNow 仿真账号与生产账号格式相同，仅前置地址不同。",
+    "用户名": "your_ctp_user",
+    "密码": "your_ctp_password",
+    "经纪商代码": "9999",
+    "交易服务器": "180.168.146.187:10201",
+    "行情服务器": "180.168.146.187:10211",
+    "产品名称": "simnow_client_test",
+    "授权编码": "0000000000000000"
+  },
+
+  "XTP": {
+    "_comment": "适用于国内证券（股票/ETF/债券），需中泰证券账号及 XTP SDK。",
+    "用户名": "your_xtp_user",
+    "密码": "your_xtp_password",
+    "客户号": 1,
+    "交易服务器": "your_trade_server_ip",
+    "交易端口": 6001,
+    "行情服务器": "your_md_server_ip",
+    "行情端口": 6002,
+    "行情协议": "TCP",
+    "日志级别": 2,
+    "授权码": "your_xtp_license"
+  },
+
+  "IB": {
+    "_comment": "适用于 Interactive Brokers 境外账号，需本地开着 TWS 或 IB Gateway 桌面客户端。",
+    "TWS地址": "127.0.0.1",
+    "TWS端口": 7497,
+    "客户号": 1
+  },
+
+  "UFT": {
+    "_comment": "适用于恒生 UFT 柜台（部分券商期货子公司使用），需对应账号和 UFT SDK。",
+    "用户名": "your_uft_user",
+    "密码": "your_uft_password",
+    "经纪商代码": "your_broker_id",
+    "交易服务器": "your_trade_server_ip:port",
+    "行情服务器": "your_md_server_ip:port",
+    "产品名称": "",
+    "授权编码": ""
+  }
+}
