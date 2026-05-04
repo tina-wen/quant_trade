@@ -39,7 +39,26 @@ def get_args(argv=None):
 
     parser.add_argument("--stop_loss", type=float, default=0.1)
     parser.add_argument(
-        "--slippage", type=float, default=0.0, help="滑点，买入加价、卖出减价（价格单位）"
+        "--slippage",
+        type=float,
+        default=0.0,
+        help="滑点百分比，买入加价/卖出减价（例如 0.001 表示 0.1%）",
+    )
+    # ─ 风控参数 ─
+    parser.add_argument(
+        "--max_daily_drawdown",
+        type=float,
+        default=0.1,
+        help="日内最大回撤熔断阈值，默认 0.1（即 10%）",
+    )
+    parser.add_argument(
+        "--max_position_per_code", type=int, default=10, help="单品种最大持仓手数，默认 10"
+    )
+    parser.add_argument(
+        "--min_balance_ratio",
+        type=float,
+        default=0.1,
+        help="账户权益最低比例（相对初始资金），默认 0.1（即 10%）",
     )
 
     parser.add_argument("--input_mode", type=str, default="in")

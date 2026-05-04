@@ -15,6 +15,9 @@ def run_backtest(data_query: DataQuery, args) -> trade_simulation:
         usr_name=args.usr_name,
         log_dir=args.log_dir,
         slippage=args.slippage,
+        max_daily_drawdown=args.max_daily_drawdown,
+        max_position_per_code=args.max_position_per_code,
+        min_balance_ratio=args.min_balance_ratio,
     )
     signal = get_signal(args.trade_strategy, args.config, data_query)
     trade_order = TradeOrder(
